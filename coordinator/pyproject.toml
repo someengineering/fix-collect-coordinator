@@ -1,0 +1,42 @@
+[project]
+name = "collect_coordinator"
+version = "3.6.2"
+authors = [{name="Some Engineering Inc."}]
+description = "Keeps all the things."
+license = {file="LICENSE"}
+urls = {"Homepage" = "https://resoto.com"}
+requires-python = ">=3.9"
+classifiers = [ "Programming Language :: Python :: 3" ]
+readme = {file="README.md", content-type="text/markdown"}
+
+dependencies = [
+    "kubernetes_asyncio",
+    "attrs",
+    "cattrs"
+]
+
+[project.optional-dependencies]
+
+test = [
+    "black",
+    "coverage",
+    "flake8",
+    "hypothesis",
+    "mypy",
+    "pep8-naming",
+    "pip-tools",
+    "pylint",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "tox",
+]
+
+
+[project.scripts]
+collect_coordinator = "collect_coordinator.__main__:main"
+
+[build-system]
+requires = ["setuptools>=67.8.0", "wheel>=0.40.0", "build>=0.10.0"]
+build-backend = "setuptools.build_meta"
+
