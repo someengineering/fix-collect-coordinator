@@ -37,5 +37,6 @@ venv:
 	. ./venv/bin/activate && pip install -e ../../resoto/resotolib
 	. ./venv/bin/activate && pip install -e ../../resoto/resotocore
 	. ./venv/bin/activate && pip install -e ../../resoto/resotoworker
+	. ./venv/bin/activate && pip install -e .
 
 setup: clean clean-env venv

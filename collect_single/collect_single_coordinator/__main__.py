@@ -1,14 +1,18 @@
 import asyncio
 import logging
+import sys
 from asyncio import Future, streams
 from asyncio.subprocess import Process
 from contextlib import suppress
+from itertools import takewhile
+from pathlib import Path
 from signal import SIGKILL
 from typing import List, Optional, Any
 
 from resotoclient.async_client import ResotoClient
 
 from resotolib.proc import kill_children
+from resotolib.args import ArgumentParser
 
 log = logging.getLogger("resoto.coordinator")
 
@@ -55,7 +59,9 @@ class ProcessWrapper:
 
 
 class CollectAndSync:
-    def __init__(self, core_url: str = "http://localhost:8980") -> None:
+    def __init__(self, core_args: List[str], worker_args: List[str], core_url: str = "http://localhost:8980") -> None:
+        self.core_args = ["resotocore", "--no-scheduling", "--ignore-interrupted-tasks"] + core_args
+        self.worker_args = ["resotoworker"] + worker_args
         self.core_url = core_url
         self.task_id: Optional[str] = None
 
@@ -114,14 +120,14 @@ class CollectAndSync:
             raise Exception("Could not start collect workflow")
 
     async def sync(self) -> None:
-        async with ProcessWrapper(["resotocore", "--no-scheduling", "--ignore-interrupted-tasks"]):
+        async with ProcessWrapper(self.core_args):
             log.info("Core started.")
             async with await asyncio.wait_for(self.core_client(), timeout=60) as client:
                 log.info("Core client connected")
                 # wait up to 5 minutes for all running workflows to finish
                 await asyncio.wait_for(self.wait_for_collect_tasks_to_finish(client), timeout=300)
                 log.info("All collect workflows finished")
-                async with ProcessWrapper(["resotoworker"]):
+                async with ProcessWrapper(self.worker_args):
                     log.info("Worker started")
                     try:
                         # wait for worker to be connected
@@ -139,7 +145,25 @@ class CollectAndSync:
 
 
 def main() -> None:
-    asyncio.run(CollectAndSync().sync())
+    # 3 argument sets delimited by "---": <coordinator args> --- <core args> --- <worker args>
+    # coordinator --main-arg1 --main-arg2 --- --core-arg1 --core-arg2 --- --worker-arg1 --worker-arg2
+    args = iter(sys.argv[1:])
+    coordinator_args = list(takewhile(lambda x: x != "---", args))
+    core_args = list(takewhile(lambda x: x != "---", args))
+    worker_args = list(args)
+    # handle coordinator args
+    parser = ArgumentParser()
+    parser.add_argument("--worker-config", help="Worker config file")
+    parsed = parser.parse_args(coordinator_args)
+    if parsed.worker_config:
+        log.info("Writing worker config")
+        worker_config = Path.home() / "resoto.worker.yaml"
+        with open(worker_config, "w+") as f:
+            f.write(parsed.worker_config)
+        worker_args.extend(["--override-path", str(worker_config)])
+
+    log.info(f"Coordinator args:({coordinator_args}) Core args:({core_args}) Worker args:({worker_args})")
+    asyncio.run(CollectAndSync(core_args, worker_args).sync())
 
 
 if __name__ == "__main__":
