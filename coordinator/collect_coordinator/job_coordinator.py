@@ -93,7 +93,7 @@ class JobDefinition:
 
         return JobDefinition(
             name=f"collect-single-{tenant}",
-            image="someengineering/fix-collect-single:test2",
+            image="someengineering/fix-collect-single:test3",
             args=[*coordinator_args, "---", *core_args, "---", *worker_args],
             requires=requires,
             limits=limits,
