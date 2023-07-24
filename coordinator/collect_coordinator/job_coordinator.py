@@ -20,6 +20,7 @@ from kubernetes_asyncio.client import (
     V1PodSpec,
     V1Container,
     V1ResourceRequirements,
+    V1EnvVar,
 )
 from kubernetes_asyncio.client.api_client import ApiClient
 from kubernetes_asyncio.watch import Watch
@@ -48,7 +49,7 @@ class ComputeResources:
 class JobDefinition:
     name: str
     image: str
-    command: List[str]
+    args: List[str]
     restart_policy: str = "Never"
     requires: Optional[ComputeResources] = None
     limits: Optional[ComputeResources] = None
@@ -80,6 +81,7 @@ class JobDefinition:
 
         coordinator_args = ["--write", "resoto.worker.yaml=WORKER_CONFIG"]
         core_args = [
+            "--graphdb-bootstrap-do-not-secure",
             "--graphdb-server",
             graphdb_server,
             "--graphdb-database",
@@ -91,8 +93,8 @@ class JobDefinition:
 
         return JobDefinition(
             name=f"collect-single-{tenant}",
-            image="someengineering/fix-collect-single:latest",
-            command=[*coordinator_args, "---", *core_args, "---", *worker_args],
+            image="someengineering/fix-collect-single:test",
+            args=[*coordinator_args, "---", *core_args, "---", *worker_args],
             requires=requires,
             limits=limits,
             env={"WORKER_CONFIG": worker_config, **env},
@@ -172,9 +174,9 @@ class JobCoordinator(Service):
                 containers=[
                     V1Container(
                         name=definition.name,
-                        env=definition.env,
+                        env=[V1EnvVar(name=k, value=v) for k, v in (definition.env or {}).items()],
                         image=definition.image,
-                        command=definition.command,
+                        args=definition.args,
                         resources=V1ResourceRequirements(
                             requests=definition.requires.pod_spec() if definition.requires else None,
                             limits=definition.limits.pod_spec() if definition.limits else None,
