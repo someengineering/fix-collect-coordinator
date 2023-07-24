@@ -7,6 +7,8 @@ from enum import Enum
 from typing import Dict, Any, Optional, List
 
 from attrs import define
+
+from bitmath import Byte, MiB, GiB
 from kubernetes_asyncio import client as k8s
 from kubernetes_asyncio.client import (
     V1Job,
@@ -17,6 +19,7 @@ from kubernetes_asyncio.client import (
     V1PodTemplateSpec,
     V1PodSpec,
     V1Container,
+    V1ResourceRequirements,
 )
 from kubernetes_asyncio.client.api_client import ApiClient
 from kubernetes_asyncio.watch import Watch
@@ -24,6 +27,21 @@ from kubernetes_asyncio.watch import Watch
 from collect_coordinator.service import Service
 
 log = logging.getLogger("collect.coordinator")
+Json = Dict[str, Any]
+
+
+@define(eq=True, order=True, repr=True, frozen=True)
+class ComputeResources:
+    cores: Optional[float] = None
+    memory: Optional[Byte] = None
+
+    def pod_spec(self) -> Json:
+        limits = {}
+        if self.cores is not None:
+            limits["cpu"] = str(self.cores)
+        if self.memory is not None:
+            limits["memory"] = f"{int(self.memory.MiB.value)}Mi"
+        return limits
 
 
 @define(eq=True, order=True, repr=True, frozen=True)
@@ -32,6 +50,53 @@ class JobDefinition:
     image: str
     command: List[str]
     restart_policy: str = "Never"
+    requires: Optional[ComputeResources] = None
+    limits: Optional[ComputeResources] = None
+    env: Optional[Dict[str, str]] = None
+
+    @classmethod
+    def collect_definition(
+        cls,
+        tenant: str,
+        graphdb_server: str,
+        graphdb_database: str,
+        worker_config: str,
+        env: Dict[str, str],
+        account_len_hint: Optional[int],
+    ) -> JobDefinition:
+        if account_len_hint is None:
+            # account len size unknown: make sure we can collect and are reasonable fast
+            requires = ComputeResources(cores=4, memory=GiB(5))
+            limits = ComputeResources(cores=4, memory=GiB(20))
+        elif account_len_hint == 1:
+            requires = ComputeResources(cores=1, memory=MiB(512))
+            limits = ComputeResources(cores=1, memory=GiB(2))
+        elif account_len_hint < 10:
+            requires = ComputeResources(cores=2, memory=GiB(3))
+            limits = ComputeResources(cores=4, memory=GiB(10))
+        else:
+            requires = ComputeResources(cores=4, memory=GiB(5))
+            limits = None
+
+        coordinator_args = ["--write", "resoto.worker.yaml=WORKER_CONFIG"]
+        core_args = [
+            "--graphdb-server",
+            graphdb_server,
+            "--graphdb-database",
+            graphdb_database,
+            "--override-path",
+            "/home/resoto/resoto.worker.yaml",
+        ]
+        worker_args: List[str] = []
+
+        return JobDefinition(
+            name=f"collect-single-{tenant}",
+            image="someengineering/fix-collect-single:latest",
+            command=[*coordinator_args, "---", *core_args, "---", *worker_args],
+            requires=requires,
+            limits=limits,
+            env={"WORKER_CONFIG": worker_config, **env},
+        )
 
 
 class JobStatus(Enum):
@@ -84,7 +149,7 @@ class JobCoordinator(Service):
     async def __schedule_next(self) -> None:
         async with self.job_queue_lock:
             async with self.running_jobs_lock:
-                to_schedule = {}
+                to_schedule: Dict[str, JobDefinition] = {}
                 for job in self.job_queue:
                     if job.name not in self.running_jobs and job.name not in to_schedule:
                         # job could be schedule, make sure we don't exceed max_parallel
@@ -104,7 +169,18 @@ class JobCoordinator(Service):
         pod_template = V1PodTemplateSpec(
             spec=V1PodSpec(
                 restart_policy=definition.restart_policy,
-                containers=[V1Container(name=definition.name, image=definition.image, command=definition.command)],
+                containers=[
+                    V1Container(
+                        name=definition.name,
+                        env=definition.env,
+                        image=definition.image,
+                        command=definition.command,
+                        resources=V1ResourceRequirements(
+                            requests=definition.requires.pod_spec() if definition.requires else None,
+                            limits=definition.limits.pod_spec() if definition.limits else None,
+                        ),
+                    )
+                ],
             ),
         )
         job = V1Job(

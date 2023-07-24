@@ -12,7 +12,8 @@ readme = {file="README.md", content-type="text/markdown"}
 dependencies = [
     "kubernetes_asyncio",
     "attrs",
-    "cattrs"
+    "cattrs",
+    "bitmath"
 ]
 
 [project.optional-dependencies]
