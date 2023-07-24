@@ -16,8 +16,21 @@ class Api(Service):
 
     async def run(self, request: web.Request) -> web.Response:
         coordinator = self.deps.service("job_coordinator", JobCoordinator)
-        name = request.query.get("name", "hello")
-        await coordinator.start_job(JobDefinition(name, "busybox", ["sh", "-c", 'echo "Hello World!" && sleep 5']))
+        name = request.query.get("name", "someengineering")
+
+        definition = JobDefinition.collect_definition(
+            name,
+            "http://db-0.dbs.fix.svc.cluster.local:8529",
+            "db3",
+            "resotoworker:\n  collector:\n     - 'aws'",
+            {
+                "AWS_ACCESS_KEY_ID": "",
+                "AWS_SECRET_ACCESS_KEY": "",
+                "AWS_SESSION_TOKEN": "",
+            },
+            1,
+        )
+        await coordinator.start_job(definition)
         return web.Response(text="ok")
 
     async def status(self, request: web.Request) -> web.Response:

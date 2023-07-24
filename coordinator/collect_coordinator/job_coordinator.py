@@ -93,7 +93,7 @@ class JobDefinition:
 
         return JobDefinition(
             name=f"collect-single-{tenant}",
-            image="someengineering/fix-collect-single:test",
+            image="someengineering/fix-collect-single:test2",
             args=[*coordinator_args, "---", *core_args, "---", *worker_args],
             requires=requires,
             limits=limits,
@@ -176,6 +176,7 @@ class JobCoordinator(Service):
                         name=definition.name,
                         env=[V1EnvVar(name=k, value=v) for k, v in (definition.env or {}).items()],
                         image=definition.image,
+                        image_pull_policy="Always",
                         args=definition.args,
                         resources=V1ResourceRequirements(
                             requests=definition.requires.pod_spec() if definition.requires else None,
