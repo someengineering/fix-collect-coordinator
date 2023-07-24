@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import sys
 from asyncio import Future, streams
 from asyncio.subprocess import Process
@@ -7,7 +8,7 @@ from contextlib import suppress
 from itertools import takewhile
 from pathlib import Path
 from signal import SIGKILL
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Tuple
 
 from resotoclient.async_client import ResotoClient
 
@@ -144,6 +145,10 @@ class CollectAndSync:
                         raise
 
 
+def kv_pairs(string) -> Tuple[str, str]:
+    return tuple(string.split("=", maxsplit=1))
+
+
 def main() -> None:
     # 3 argument sets delimited by "---": <coordinator args> --- <core args> --- <worker args>
     # coordinator --main-arg1 --main-arg2 --- --core-arg1 --core-arg2 --- --worker-arg1 --worker-arg2
@@ -153,14 +158,23 @@ def main() -> None:
     worker_args = list(args)
     # handle coordinator args
     parser = ArgumentParser()
-    parser.add_argument("--worker-config", help="Worker config file")
+    parser.add_argument(
+        "--write",
+        type=kv_pairs,
+        help="Write config files in home dir from env vars. Format: --write path/in/home/dir=env-var-name",
+        default=[],
+        action="append",
+    )
     parsed = parser.parse_args(coordinator_args)
-    if parsed.worker_config:
-        log.info("Writing worker config")
-        worker_config = Path.home() / "resoto.worker.yaml"
-        with open(worker_config, "w+") as f:
-            f.write(parsed.worker_config)
-        worker_args.extend(["--override-path", str(worker_config)])
+    env_vars = {k.lower(): v for k, v in os.environ.items()}
+    for home_path, env_var_name in parsed.write:
+        path = (Path.home() / Path(home_path)).absolute()
+        content = env_vars.get(env_var_name.lower())
+        assert content is not None, f"Env var {env_var_name} not found"
+        log.info(f"Writing file: {path} from env var: {env_var_name}")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w+") as f:
+            f.write(content)
 
     log.info(f"Coordinator args:({coordinator_args}) Core args:({core_args}) Worker args:({worker_args})")
     asyncio.run(CollectAndSync(core_args, worker_args).sync())
