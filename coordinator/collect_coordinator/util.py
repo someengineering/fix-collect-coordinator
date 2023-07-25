@@ -9,5 +9,5 @@ def setup_process() -> None:
 
 
 # Register json structure/unstructure hooks
-register_structure_hook(Byte, lambda v: MiB(v).best_prefix())
+register_structure_hook(Byte, lambda v: MiB(v).best_prefix())  # type: ignore
 register_unstructure_hook(Byte, lambda b: int(b.to_MiB().value))
