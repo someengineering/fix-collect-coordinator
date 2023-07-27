@@ -4,7 +4,7 @@ ServiceType = TypeVar("ServiceType", bound="Service")
 T = TypeVar("T")
 
 
-class Service(AsyncContextManager[Any]):
+class Service:
     async def start(self) -> Any:
         pass
 

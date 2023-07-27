@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 
 from bitmath import Byte, MiB
 from cattrs import register_structure_hook, register_unstructure_hook
@@ -6,6 +7,10 @@ from cattrs import register_structure_hook, register_unstructure_hook
 
 def setup_process() -> None:
     logging.basicConfig(level=logging.INFO)
+
+
+def utc() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 # Register json structure/unstructure hooks

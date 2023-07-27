@@ -14,7 +14,9 @@ dependencies = [
     "attrs",
     "cattrs",
     "bitmath",
-    "redis"
+    "redis",
+    "sqlalchemy[asyncio]",
+    "aiomysql", # aiodriver for mariadb
 ]
 
 [project.optional-dependencies]
