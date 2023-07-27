@@ -31,8 +31,8 @@ class NextRun(DbEntity):
 
 
 def runs_to_start() -> Select[Tuple[NextRun]]:
-    return select(NextRun).where((NextRun.next_run <= utc()) & (NextRun.in_progress == False))
+    return select(NextRun).where((NextRun.next_run <= utc()) & (NextRun.in_progress == False))  # noqa: E712
 
 
 def running_for_too_long(too_long: timedelta) -> Select[Tuple[NextRun]]:
-    return select(NextRun).where((NextRun.started_at <= (utc() - too_long)) & (NextRun.in_progress == True))
+    return select(NextRun).where((NextRun.started_at <= (utc() - too_long)) & (NextRun.in_progress == True))  # noqaE712

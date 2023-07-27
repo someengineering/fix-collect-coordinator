@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import timedelta, datetime
 from typing import AsyncIterator, List
 
 from collect_coordinator.db.database import DbEngine, EntityDb, DbEntity
@@ -55,14 +55,15 @@ async def test_next_db(next_db: EntityDb[str, NextRun]) -> None:
 
 @pytest.mark.asyncio
 async def test_update_entries(next_db: EntityDb[str, NextRun]) -> None:
+    now = datetime.now()
     # updating properties of loaded elements, will be persisted
     async with next_db.session() as session:
         async for next_run in session.all():
-            next_run.in_progress = False
-            next_run.started_at = None
+            next_run.in_progress = True
+            next_run.started_at = now
 
     # check that the changes are persisted
     async with next_db.session() as session:
         async for next_run in session.all():
-            assert next_run.in_progress is False
-            assert next_run.started_at is None
+            assert next_run.in_progress is True
+            assert next_run.started_at.second == now.second
