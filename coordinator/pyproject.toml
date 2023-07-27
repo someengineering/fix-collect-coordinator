@@ -13,7 +13,8 @@ dependencies = [
     "kubernetes_asyncio",
     "attrs",
     "cattrs",
-    "bitmath"
+    "bitmath",
+    "redis"
 ]
 
 [project.optional-dependencies]

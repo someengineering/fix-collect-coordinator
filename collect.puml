@@ -12,16 +12,10 @@ frame HetznerCloud {
 
   frame Kubernetes {
 
+    component AuthStore <<Deployment>> {
+    }
     component FixBackend <<Deployment>> {
     }
-    note bottom of FixBackend
-      The Fix Backend is the main application.
-
-      Authentication Layer.
-      All requests of the user need to pass this entity.
-      All requests that pass this stage are considered authenticated.
-      Authorization needs to be checked in the related component.
-    end note
     component CollectCoordinator <<Deployment>> {
     }
     component CollectSingleJob <<Job>> {
@@ -29,40 +23,30 @@ frame HetznerCloud {
 
     database ArangoDb <<StatefulSet>> {
     }
-    note right of ArangoDb
-      Every tenant is one Arango Database.
-      Multiple databases per node.
-      Multiple Nodes in the Cluster.
-      Each node has one Persistent Volume.
-    end note
     database Redis <<StatefulSet>> {
+    }
+    database PostgresQL <<StatefulSet>> {
     }
     CollectCoordinator -> CollectSingleJob: spwans for every\ntenant/account
     CollectSingleJob --> ArangoDb
     CollectSingleJob --> Redis: push progress
     CollectSingleJob --> FixBackend: Security Benchmark Results
-    Redis --> FixBackend: progress updates
+    FixBackend --> Redis
+    AuthStore --> Redis: org changes
+    AuthStore --> PostgresQL
+    CollectCoordinator --> Redis: listen for org changes
+    CollectCoordinator --> PostgresQL
 
     component Inventory <<Deployment>> {
     }
-    note top of Inventory
-      Special version of ResotoCore.
-      Used for search and executing CLI Commands.
-      No event system, no workflows, no jobs.
-    end note
     Inventory --> ArangoDb: read data
   }
 }
-database PlanetScale {
-}
-note bottom of PlanetScale
-  Stores all user relevant data.
-end note
 
 
-
+FixFrontend --> AuthStore
 FixFrontend --> FixBackend
-FixBackend --> PlanetScale
+FixBackend --> PostgresQL
 FixBackend --> Inventory
 @enduml
 
