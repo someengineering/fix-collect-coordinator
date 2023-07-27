@@ -35,8 +35,12 @@ class DbSession(Generic[KeyType, DbEntityType]):
         await self.session.__aenter__()
         return self
 
-    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        await self.session.commit()
+    async def __aexit__(self, exc_type: Any, exc_val: Optional[BaseException], exc_tb: Any) -> None:
+        # based on the result of this block, the transaction is committed or rolled back
+        if exc_val is None:
+            await self.session.commit()
+        else:
+            await self.session.rollback()
         await self.session.__aexit__(exc_type, exc_val, exc_tb)
 
     def add(self, entity: DbEntityType) -> None:
