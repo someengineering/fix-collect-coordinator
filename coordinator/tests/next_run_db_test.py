@@ -1,10 +1,12 @@
+from contextlib import suppress
 from datetime import timedelta, datetime
 from typing import AsyncIterator, List
 
+import pytest
+from pytest import approx
+
 from collect_coordinator.db.database import DbEngine, EntityDb, DbEntity
 from collect_coordinator.db.nextrundb import NextRun, running_for_too_long, runs_to_start
-import pytest
-
 from collect_coordinator.util import utc
 
 
@@ -55,15 +57,31 @@ async def test_next_db(next_db: EntityDb[str, NextRun]) -> None:
 
 @pytest.mark.asyncio
 async def test_update_entries(next_db: EntityDb[str, NextRun]) -> None:
-    now = datetime.now()
+    in_1_min = datetime.now() + timedelta(minutes=1)
     # updating properties of loaded elements, will be persisted
     async with next_db.session() as session:
         async for next_run in session.all():
             next_run.in_progress = True
-            next_run.started_at = now
+            next_run.started_at = in_1_min
 
     # check that the changes are persisted
     async with next_db.session() as session:
         async for next_run in session.all():
             assert next_run.in_progress is True
-            assert next_run.started_at.second == now.second
+            assert next_run.started_at.timestamp() == approx(in_1_min.timestamp(), abs=1)
+
+
+@pytest.mark.asyncio
+async def test_rollback_on_exception(next_db: EntityDb[str, NextRun]) -> None:
+    in_1_min = datetime.now() + timedelta(minutes=1)
+    # on exception no change is persisted
+    with suppress(Exception):
+        async with next_db.session() as session:
+            async for next_run in session.all():
+                next_run.started_at = in_1_min
+            raise Exception("boom")
+
+    # check that the changes are persisted
+    async with next_db.session() as session:
+        async for next_run in session.all():
+            assert next_run.started_at is None or next_run.started_at.timestamp() != approx(in_1_min.timestamp(), abs=1)
