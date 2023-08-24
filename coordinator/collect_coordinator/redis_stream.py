@@ -2,22 +2,37 @@ import asyncio
 import json
 import logging
 import random
+import re
+import sys
 import uuid
 from asyncio import Task, CancelledError
 from contextlib import suppress
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from functools import partial
-from typing import Callable, Any, Union, Awaitable, Optional, TypeVar
+from typing import Callable, Any, Union, Awaitable, Optional, TypeVar, Sequence, Mapping, Dict, TYPE_CHECKING
 
 from attrs import define
-from redis.asyncio import Redis
+from redis.asyncio import Redis as BaseRedis
 
-from collect_coordinator.job_coordinator import Json
+from collect_coordinator.periodic import Periodic
 from collect_coordinator.service import Service
+
+if TYPE_CHECKING:
+    Redis = BaseRedis[str]
+else:
+    Redis = BaseRedis
 
 log = logging.getLogger("collect.coordinator")
 UTC_Date_Format = "%Y-%m-%dT%H:%M:%SZ"
 T = TypeVar("T")
+Json = Dict[str, Any]
+CommitTimeRE = re.compile(r"(\d{13})-.*")
+
+
+def time_from_id(uid: str, default: int) -> int:
+    if match := CommitTimeRE.match(uid):
+        return int(match.group(1))
+    return default
 
 
 @define(frozen=True, slots=True)
@@ -49,7 +64,7 @@ NoBackoff = Backoff(0, 0, 0)
 class RedisStreamListener(Service):
     def __init__(
         self,
-        redis: Redis,  # type: ignore
+        redis: Redis,
         stream: str,
         listener: str,
         message_processor: Callable[[Json], Union[Awaitable[Any], Any]],
@@ -94,7 +109,6 @@ class RedisStreamListener(Service):
                     [[_, content]] = res  # safe, since we are reading from one stream
                     for rid, data in content:
                         await self.handle_message(data)
-                        # await self.handle_message(byte_dict_to_str(data))
                         last = rid
                     # acknowledge all messages by committing the last read id
                     await self.redis.hset(f"{self.stream}.listener", self.listener, last)
@@ -108,8 +122,9 @@ class RedisStreamListener(Service):
             if "id" in message and "at" in message and "data" in message:
                 mid = message["id"]
                 at = message["at"]
+                publisher = message["publisher"]
                 data = json.loads(message["data"])
-                log.debug(f"Received message {self.listener}: message {mid}, from {at}, data: {data}")
+                log.debug(f"Received message {self.listener}: message {mid}, from {publisher}, at {at} data: {data}")
                 await self.backoff.with_backoff(partial(self.message_processor, data))
             else:
                 log.warning(f"Invalid message format: {message}. Ignore.")
@@ -138,15 +153,71 @@ class RedisStreamListener(Service):
 class RedisStreamPublisher(Service):
     """
     Publish messages to a redis stream.
-    :param redis: the redis client.
-    :param stream: the name of the redis event stream.
+    :param redis: The redis client.
+    :param stream: The name of the redis event stream.
     """
 
-    def __init__(self, redis: Redis, stream: str) -> None:  # type: ignore
+    def __init__(
+        self,
+        redis: Redis,
+        stream: str,
+        publisher_name: str,
+        keep_unprocessed_messages_for: timedelta = timedelta(days=1),
+    ) -> None:
         self.redis = redis
         self.stream = stream
+        self.publisher_name = publisher_name
+        self.keep_unprocessed_messages_for = keep_unprocessed_messages_for
+        self.clean_process = Periodic("clean_processed_messages", self.cleanup_processed_messages, timedelta(minutes=1))
 
-    async def publish(self, message: Json) -> None:
+    async def publish(self, kind: str, **params: Union[str, int, bool, None, Sequence[Any], Mapping[str, Any]]) -> None:
+        await self.publish_json(kind, params)
+
+    async def publish_json(self, kind: str, message: Json) -> None:
         now_str = datetime.now(timezone.utc).strftime(UTC_Date_Format)
-        message = {"id": str(uuid.uuid1()), "at": now_str, "data": json.dumps(message)}
+        message = {
+            "id": str(uuid.uuid1()),
+            "at": now_str,
+            "publisher": self.publisher_name,
+            "kind": kind,
+            "data": json.dumps(message),
+        }
         await self.redis.xadd(self.stream, message)
+
+    async def cleanup_processed_messages(self) -> int:
+        log.debug("Cleaning up processed messages.")
+        # get the earliest commit id over all listeners
+        last_commit_messages = await self.redis.hgetall(self.stream + ".listener")
+        # in case, there are no listeners:
+        latest = sys.maxsize if last_commit_messages else 0
+        for listener, last_commit in last_commit_messages.items():
+            latest = min(latest, time_from_id(last_commit, latest))
+        # in case there is an inactive reader, make sure to only keep the last 7 days
+        latest = max(latest, int((datetime.now() - self.keep_unprocessed_messages_for).timestamp() * 1000))
+        # iterate in batches over the stream and delete all messages that are older than the latest commit
+        last = "0"
+        cleaned_messages = 0
+        while True:
+            res = await self.redis.xread({self.stream: last}, count=5000)
+            if not res:
+                break
+            to_delete = []
+            for id_message in res:
+                stream, messages = id_message
+                for uid, message in messages:
+                    if time_from_id(uid, sys.maxsize) <= latest:
+                        to_delete.append(uid)
+                    last = uid
+            # delete all messages in one batch
+            if to_delete:
+                log.info(f"Deleting processed or old messages from stream: {len(to_delete)}")
+                cleaned_messages += len(to_delete)
+                await self.redis.xdel(self.stream, *to_delete)  # type: ignore
+        log.info(f"Cleaning up processed messages done. Cleaned {cleaned_messages} messages.")
+        return cleaned_messages
+
+    async def start(self) -> None:
+        await self.clean_process.start()
+
+    async def stop(self) -> None:
+        await self.clean_process.stop()

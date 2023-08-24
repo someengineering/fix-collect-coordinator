@@ -14,7 +14,8 @@ dependencies = [
     "attrs",
     "cattrs",
     "bitmath",
-    "redis"
+    "redis",
+    "arq"
 ]
 
 [project.optional-dependencies]
