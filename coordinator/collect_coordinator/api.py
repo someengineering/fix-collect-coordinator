@@ -2,9 +2,9 @@ from uuid import uuid4
 
 from aiohttp import web
 from cattr import unstructure
+from fixcloudutils.service import Service
 
 from collect_coordinator.job_coordinator import JobCoordinator, JobDefinition
-from collect_coordinator.service import Service
 
 
 class Api(Service):

@@ -29,8 +29,8 @@ from kubernetes_asyncio.client import (
 from kubernetes_asyncio.client.api_client import ApiClient
 from kubernetes_asyncio.watch import Watch
 
-from collect_coordinator.redis_stream import RedisStreamPublisher
-from collect_coordinator.service import Service
+from fixcloudutils.redis.event_stream import RedisStreamPublisher
+from fixcloudutils.service import Service
 
 log = logging.getLogger("collect.coordinator")
 Json = Dict[str, Any]

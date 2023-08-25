@@ -1,14 +1,16 @@
 import asyncio
 import logging
 import socket
+from argparse import ArgumentParser, Namespace
 from contextlib import suppress
 from typing import AsyncIterator, TypeVar
 
 from aiohttp import web
-from argparse import ArgumentParser, Namespace
 from aiohttp.web_app import Application
 from arq import create_pool
 from arq.connections import RedisSettings
+from fixcloudutils.redis.event_stream import RedisStreamPublisher
+from fixcloudutils.service import Dependencies
 from kubernetes_asyncio import config
 from kubernetes_asyncio.client import ApiClient
 from redis.asyncio import Redis
@@ -17,8 +19,6 @@ from redis.backoff import ExponentialBackoff
 
 from collect_coordinator.api import Api
 from collect_coordinator.job_coordinator import JobCoordinator
-from collect_coordinator.redis_stream import RedisStreamPublisher
-from collect_coordinator.service import Dependencies
 from collect_coordinator.util import setup_process
 
 log = logging.getLogger("collect.coordinator")

@@ -1,14 +1,20 @@
 import asyncio
 from contextlib import suppress
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 import pytest
+from attr import define
 from arq import create_pool
 from arq.connections import RedisSettings, ArqRedis
 from arq.worker import Worker, Function
 from pytest import fixture
 
-from redis_stream_test import ExampleData
+
+@define
+class ExampleData:
+    foo: int
+    bar: str
+    bla: List[int]
 
 
 @fixture
