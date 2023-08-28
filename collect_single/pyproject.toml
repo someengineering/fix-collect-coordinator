@@ -7,7 +7,25 @@ requires-python = ">=3.9"
 classifiers = [ "Programming Language :: Python :: 3" ]
 readme = {file="README.md", content-type="text/markdown"}
 
-dependencies = [ "resotocore", "resotoworker" ]
+dependencies = [ "resotolib", "resotocore", "resotoworker", "fixcloudutils" ]
+
+[project.optional-dependencies]
+
+test = [
+    "black",
+    "coverage",
+    "flake8",
+    "hypothesis",
+    "mypy",
+    "pep8-naming",
+    "pip-tools",
+    "pylint",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "tox",
+]
+
 
 [project.scripts]
 collect_single_coordinator = "collect_single_coordinator.__main__:main"

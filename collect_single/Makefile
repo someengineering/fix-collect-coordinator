@@ -34,9 +34,11 @@ venv:
 	python3 -m venv venv --prompt "collect_single"
 	. ./venv/bin/activate && python3 -m pip install --upgrade pip
 	. ./venv/bin/activate && pip install -r ../../resoto/requirements.txt
-	. ./venv/bin/activate && pip install -e ../../resoto/resotolib
-	. ./venv/bin/activate && pip install -e ../../resoto/resotocore
-	. ./venv/bin/activate && pip install -e ../../resoto/resotoworker
-	. ./venv/bin/activate && pip install -e .
+	. ./venv/bin/activate && pip install -e ".[test]"
+
+lint: ## static code analysis
+	black --line-length 120 --check collect_single_coordinator tests
+	flake8 collect_single_coordinator
+	mypy --python-version 3.9 --strict --install-types --non-interactive collect_single_coordinator tests
 
 setup: clean clean-env venv
