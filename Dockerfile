@@ -1,4 +1,4 @@
-FROM python:3.11-alpine
+FROM python:3.11-slim
 
 ADD . /coordinator
 RUN pip install /coordinator && rm -rf /coordinator

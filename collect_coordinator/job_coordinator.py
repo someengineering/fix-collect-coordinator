@@ -279,7 +279,7 @@ class JobCoordinator(Service):
             else:
                 job.future.set_exception(RuntimeError("Job failed!"))
                 message["error"] = error_message
-            await self.publisher.publish_json("job_done", message)
+            await self.publisher.publish("job_done", message)
 
     async def __reconcile(self) -> None:
         res = await self.batch.list_namespaced_job(

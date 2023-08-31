@@ -32,8 +32,8 @@ def start(args: Namespace) -> None:
 
     async def on_start() -> None:
         await config.load_kube_config(config_file=args.kube_config)
-        redis: Redis[str] = Redis(
-            host=args.redis_host, port=args.redis_port, decode_responses=True, retry=Retry(ExponentialBackoff(), 10)
+        redis: Redis = Redis(
+            host=args.redis_host, port=args.redis_port, decode_responses=True, retry=Retry(ExponentialBackoff(), 10)  # type: ignore # noqa
         )
         arq_redis = await create_pool(
             RedisSettings(host=args.redis_host, port=args.redis_port, database=args.redis_task_db)
