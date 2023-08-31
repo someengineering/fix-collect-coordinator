@@ -1,8 +1,10 @@
+from uuid import uuid4
+
 from aiohttp import web
 from cattr import unstructure
+from fixcloudutils.service import Service
 
 from collect_coordinator.job_coordinator import JobCoordinator, JobDefinition
-from collect_coordinator.service import Service
 
 
 class Api(Service):
@@ -18,9 +20,12 @@ class Api(Service):
         name = request.query.get("name", "someengineering")
 
         definition = JobDefinition.collect_definition(
+            str(uuid4()),
             name,
             "http://db-0.dbs.fix.svc.cluster.local:8529",
             "db3",
+            "resoto",
+            "",
             "resotoworker:\n  collector:\n     - 'aws'",
             {
                 "AWS_ACCESS_KEY_ID": "",
