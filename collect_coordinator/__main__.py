@@ -25,12 +25,8 @@ from aiohttp import web
 from aiohttp.web_app import Application
 from arq import create_pool
 from arq.connections import RedisSettings
-from fixcloudutils.redis.event_stream import RedisStreamPublisher
 from kubernetes_asyncio import config
 from kubernetes_asyncio.client import ApiClient
-from redis.asyncio import Redis
-from redis.asyncio.retry import Retry
-from redis.backoff import ExponentialBackoff
 
 from collect_coordinator.api import Api
 from collect_coordinator.job_coordinator import JobCoordinator
@@ -45,17 +41,30 @@ def start(args: Namespace) -> None:
     deps = CollectDependencies(args=args)
     app = web.Application()
 
+    async def load_kube_config() -> None:
+        loaded = False
+        try:
+            await config.load_kube_config(config_file=args.kube_config)
+            log.info("Loaded kube config from file.")
+            loaded = True
+        except Exception as e:
+            log.info(f"Failed to load kube config: {e}")
+        try:
+            config.incluster_config.load_incluster_config()
+            log.info("Loaded kube config from incluster config.")
+            loaded = True
+        except Exception as e:
+            log.info(f"Failed to load incluster config: {e}")
+        if not loaded:
+            raise RuntimeError("Failed to load kubernetes access configuration.")
+
     async def on_start() -> None:
-        await config.load_kube_config(config_file=args.kube_config)
-        redis = Redis.from_url(deps.redis_event_url, decode_responses=True, retry=Retry(ExponentialBackoff(), 10))  # type: ignore # noqa
+        await load_kube_config()
         arq_redis = await create_pool(RedisSettings.from_dsn(deps.redis_worker_url))
-        publisher = deps.add(
-            "publisher", RedisStreamPublisher(redis, "collect-coordinator-events", "collect-coordinator")
-        )
         api_client = deps.add("api_client", ApiClient(pool_threads=10))
         coordinator = deps.add(
             "job_coordinator",
-            JobCoordinator(hostname, arq_redis, publisher, api_client, args.namespace, args.max_parallel_jobs),
+            JobCoordinator(hostname, arq_redis, api_client, args.namespace, args.max_parallel_jobs),
         )
         deps.add("api", Api(app, coordinator))
         await deps.start()

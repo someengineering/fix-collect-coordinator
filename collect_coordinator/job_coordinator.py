@@ -29,7 +29,6 @@ from arq.worker import Worker, Function
 from attr import evolve
 from attrs import define
 from bitmath import Byte, MiB, GiB
-from fixcloudutils.redis.event_stream import RedisStreamPublisher
 from fixcloudutils.service import Service
 from kubernetes_asyncio import client as k8s
 from kubernetes_asyncio.client import (
@@ -194,7 +193,6 @@ class JobCoordinator(Service):
         self,
         coordinator_id: str,
         redis: ArqRedis,
-        publisher: RedisStreamPublisher,
         api_client: ApiClient,
         namespace: str,
         max_parallel: int,
@@ -202,7 +200,6 @@ class JobCoordinator(Service):
         self.coordinator_id = coordinator_id
         self.redis = redis
         self.api_client = api_client
-        self.publisher = publisher
         self.batch = k8s.BatchV1Api(api_client)
         self.namespace = namespace
         self.max_parallel = max_parallel
@@ -278,17 +275,15 @@ class JobCoordinator(Service):
         self.running_jobs[uname] = RunningJob(definition=definition, ref=ref, future=result)
         return ref
 
-    async def __mark_job_done(self, job: RunningJob, error_message: Optional[str] = None) -> None:
+    @staticmethod
+    async def __mark_future_done(job: RunningJob, error_message: Optional[str] = None) -> None:
         # note: no lock used here on purpose: caller should acquire the lock
         if not job.future.done():
             success = error_message is None
-            message = dict(job_id=job.definition.id, success=success)
             if success:
                 job.future.set_result(True)
             else:
                 job.future.set_exception(RuntimeError("Job failed!"))
-                message["error"] = error_message
-            await self.publisher.publish("job_done", message)
 
     async def __reconcile(self) -> None:
         res = await self.batch.list_namespaced_job(
@@ -334,7 +329,7 @@ class JobCoordinator(Service):
                     elif change_type == "DELETED":
                         log.info(f"Job marked as deleted. Remove {name}.")
                         # if we come here and the future is not done, mark it as failed
-                        await self.__mark_job_done(running_job, "Job failed!")
+                        await self.__mark_future_done(running_job, "Job failed!")
                         # remove all traces from the running job
                         self.running_jobs.pop(name, None)
                     else:
@@ -345,7 +340,7 @@ class JobCoordinator(Service):
                     if change_type == "MODIFIED" and ref.status.is_done():
                         log.info(f"Job {name} is done. Deleting it.")
                         error = f"Job {name} failed!" if ref.status == JobStatus.failed else None
-                        await self.__mark_job_done(running_job, error)
+                        await self.__mark_future_done(running_job, error)
                         with suppress(ApiException):
                             # Job succeeded, delete it. Can throw an error in case it is already deleted
                             await self.__delete_job(ref)
@@ -361,7 +356,6 @@ class JobCoordinator(Service):
     async def start(self) -> Any:
         await self.__clean_done_jobs()
         await self.__reconcile()
-        await self.publisher.start()
         self.watcher = asyncio.create_task(self.__watch_jobs())
 
         async def collect(ctx: Dict[Any, Any], *args: Any, **kwargs: Any) -> bool:
@@ -431,5 +425,4 @@ class JobCoordinator(Service):
             #    -> Let the caller create a new job, so we collect the data again.
             # For simplicity, we choose c) for now.
             log.info(f"Tear down. Job is still running. Mark job {name} as failed.")
-            await self.__mark_job_done(running_job, "Coordinator stopped. Job is still running.")
-        await self.publisher.stop()
+            await self.__mark_future_done(running_job, "Coordinator stopped. Job is still running.")
