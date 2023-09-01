@@ -35,6 +35,12 @@ def test_read_job_definition() -> None:
     assert job_def.args == [
         "--write",
         "resoto.worker.yaml=WORKER_CONFIG",
+        "--job-id",
+        "uid",
+        "--tenant-id",
+        "a",
+        "--redis-url",
+        "redis://redis-master.fix.svc.cluster.local:6379/0",
         "---",
         "--graphdb-bootstrap-do-not-secure",
         "--graphdb-server",
@@ -49,4 +55,4 @@ def test_read_job_definition() -> None:
         "/home/resoto/resoto.worker.yaml",
         "---",
     ]
-    assert job_def.env == {"WORKER_CONFIG": '{"foo": "bar"}', "test": "test"}
+    assert job_def.env == {"WORKER_CONFIG": '{"foo": "bar"}', "test": "test", "RESOTO_LOG_TEXT": "true"}

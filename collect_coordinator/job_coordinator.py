@@ -24,11 +24,13 @@ from contextlib import suppress
 from enum import Enum
 from typing import Dict, Any, Optional, List, Tuple
 
-from attr import evolve
 from arq.connections import ArqRedis
 from arq.worker import Worker, Function
+from attr import evolve
 from attrs import define
 from bitmath import Byte, MiB, GiB
+from fixcloudutils.redis.event_stream import RedisStreamPublisher
+from fixcloudutils.service import Service
 from kubernetes_asyncio import client as k8s
 from kubernetes_asyncio.client import (
     V1Job,
@@ -44,9 +46,6 @@ from kubernetes_asyncio.client import (
 )
 from kubernetes_asyncio.client.api_client import ApiClient
 from kubernetes_asyncio.watch import Watch
-
-from fixcloudutils.redis.event_stream import RedisStreamPublisher
-from fixcloudutils.service import Service
 
 log = logging.getLogger("collect.coordinator")
 Json = Dict[str, Any]
@@ -90,31 +89,15 @@ class JobDefinition:
 
     @classmethod
     def collect_definition_json(cls, js: Json) -> JobDefinition:
-        return cls.collect_definition(
-            job_id=js["job_id"],  # str
-            tenant_id=js["tenant_id"],  # str
-            graphdb_server=js["graphdb_server"],  # str
-            graphdb_database=js["graphdb_database"],  # str
-            graphdb_username=js["graphdb_username"],  # str
-            graphdb_password=js["graphdb_password"],  # str
-            worker_config=json.dumps(js["worker_config"]),  # Json
-            env=js.get("env"),  # Optional[Dict[str, str]]
-            account_len_hint=js.get("account_len_hint"),  # Optional[int]
-        )
-
-    @classmethod
-    def collect_definition(
-        cls,
-        job_id: str,
-        tenant_id: str,
-        graphdb_server: str,
-        graphdb_database: str,
-        graphdb_username: str,
-        graphdb_password: str,
-        worker_config: str,
-        env: Optional[Dict[str, str]] = None,
-        account_len_hint: Optional[int] = None,
-    ) -> JobDefinition:
+        job_id = js["job_id"]  # str
+        tenant_id = js["tenant_id"]  # str
+        graphdb_server = js["graphdb_server"]  # str
+        graphdb_database = js["graphdb_database"]  # str
+        graphdb_username = js["graphdb_username"]  # str
+        graphdb_password = js["graphdb_password"]  # str
+        worker_config = json.dumps(js["worker_config"])  # Json
+        env = js.get("env")  # Optional[Dict[str, str]]
+        account_len_hint = js.get("account_len_hint")  # Optional[int]
         if account_len_hint is None:
             # account len size unknown: make sure we can collect and are reasonable fast
             requires = ComputeResources(cores=4, memory=GiB(5))
@@ -129,7 +112,16 @@ class JobDefinition:
             requires = ComputeResources(cores=4, memory=GiB(5))
             limits = None
 
-        coordinator_args = ["--write", "resoto.worker.yaml=WORKER_CONFIG"]
+        coordinator_args = [
+            "--write",
+            "resoto.worker.yaml=WORKER_CONFIG",
+            "--job-id",
+            job_id,
+            "--tenant-id",
+            tenant_id,
+            "--redis-url",
+            "redis://redis-master.fix.svc.cluster.local:6379/0",
+        ]
         core_args = [
             "--graphdb-bootstrap-do-not-secure",
             "--graphdb-server",
@@ -142,17 +134,18 @@ class JobDefinition:
             graphdb_password,
             "--override-path",
             "/home/resoto/resoto.worker.yaml",
+            # "--debug",
         ]
         worker_args: List[str] = []
 
         return JobDefinition(
             id=job_id,
             name=f"collect-single-{tenant_id}",
-            image="someengineering/fix-collect-single:test3",
+            image="someengineering/fix-collect-single:edge",
             args=[*coordinator_args, "---", *core_args, "---", *worker_args],
             requires=requires,
             limits=limits,
-            env={"WORKER_CONFIG": worker_config, **(env or {})},
+            env={"WORKER_CONFIG": worker_config, "RESOTO_LOG_TEXT": "true", **(env or {})},
         )
 
 

@@ -26,7 +26,6 @@ from aiohttp.web_app import Application
 from arq import create_pool
 from arq.connections import RedisSettings
 from fixcloudutils.redis.event_stream import RedisStreamPublisher
-from fixcloudutils.service import Dependencies
 from kubernetes_asyncio import config
 from kubernetes_asyncio.client import ApiClient
 from redis.asyncio import Redis
@@ -35,7 +34,7 @@ from redis.backoff import ExponentialBackoff
 
 from collect_coordinator.api import Api
 from collect_coordinator.job_coordinator import JobCoordinator
-from collect_coordinator.util import setup_process
+from collect_coordinator.util import setup_process, CollectDependencies
 
 log = logging.getLogger("collect.coordinator")
 T = TypeVar("T")
@@ -43,30 +42,26 @@ T = TypeVar("T")
 
 def start(args: Namespace) -> None:
     hostname = socket.gethostname()
-    services = Dependencies()
+    deps = CollectDependencies(args=args)
     app = web.Application()
 
     async def on_start() -> None:
         await config.load_kube_config(config_file=args.kube_config)
-        redis: Redis = Redis(
-            host=args.redis_host, port=args.redis_port, decode_responses=True, retry=Retry(ExponentialBackoff(), 10)  # type: ignore # noqa
-        )
-        arq_redis = await create_pool(
-            RedisSettings(host=args.redis_host, port=args.redis_port, database=args.redis_task_db)
-        )
-        publisher = services.add(
+        redis = Redis.from_url(deps.redis_event_url, decode_responses=True, retry=Retry(ExponentialBackoff(), 10))  # type: ignore # noqa
+        arq_redis = await create_pool(RedisSettings.from_dsn(deps.redis_worker_url))
+        publisher = deps.add(
             "publisher", RedisStreamPublisher(redis, "collect-coordinator-events", "collect-coordinator")
         )
-        api_client = services.add("api_client", ApiClient(pool_threads=10))
-        coordinator = services.add(
+        api_client = deps.add("api_client", ApiClient(pool_threads=10))
+        coordinator = deps.add(
             "job_coordinator",
             JobCoordinator(hostname, arq_redis, publisher, api_client, args.namespace, args.max_parallel_jobs),
         )
-        services.add("api", Api(app, coordinator))
-        await services.start()
+        deps.add("api", Api(app, coordinator))
+        await deps.start()
 
     async def on_stop() -> None:
-        await services.stop()
+        await deps.stop()
 
     async def async_initializer() -> Application:
         async def clean_all_tasks() -> None:
@@ -97,10 +92,11 @@ def main() -> None:
     ap.add_argument("--namespace", help="The namespace to start the jobs in.", required=True)
     ap.add_argument("--debug", action="store_true", help="Enable debug logging")
     ap.add_argument("--kube-config", help="Optional path to kube config file.")
-    ap.add_argument("--redis-host", default="localhost", help="Redis host.")
-    ap.add_argument("--redis-port", type=int, default=6379, help="Redis port.")
-    ap.add_argument("--redis-event-db", type=int, default=0, help="Redis database to use for events. Defaults to 0.")
-    ap.add_argument("--redis-task-db", type=int, default=5, help="Redis database to use for tasks. Defaults to 5.")
+    ap.add_argument(
+        "--redis-url-nodb", help="Redis host. Default: redis://localhost:6379", default="redis://localhost:6379"
+    )
+    ap.add_argument("--redis-event-db", type=int, help="Redis worker db. Default to 0", default=0)
+    ap.add_argument("--redis-worker-db", type=int, help="Redis worker db. Default to 5", default=5)
     ap.add_argument("--max-parallel-jobs", type=int, default=100, help="Jobs to spawn in parallel. Defaults to 100.")
     args = ap.parse_args()
 
