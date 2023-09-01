@@ -76,7 +76,6 @@ coverage: ## check code coverage quickly with the default Python
 venv:
 	python3 -m venv venv --prompt "collect_coordinator"
 	. ./venv/bin/activate && python3 -m pip install --upgrade pip
-	#. ./venv/bin/activate && pip install -r requirements-test.txt
 	. ./venv/bin/activate && pip install -e ".[test]"
 	. ./venv/bin/activate && mypy --install-types --non-interactive collect_coordinator tests
 

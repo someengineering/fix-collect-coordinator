@@ -1,4 +1,5 @@
 import asyncio
+import os
 from contextlib import suppress
 from typing import Dict, Any, List
 
@@ -32,9 +33,9 @@ async def test_enqueue_job(arq_redis: ArqRedis) -> None:
         graphdb_password="",
         worker_config={"resotoworker": {"collector": ["aws"]}},
         env={
-            "AWS_ACCESS_KEY_ID": "",
-            "AWS_SECRET_ACCESS_KEY": "",
-            "AWS_SESSION_TOKEN": "",
+            "AWS_ACCESS_KEY_ID": os.environ["AWS_ACCESS_KEY_ID"],
+            "AWS_SECRET_ACCESS_KEY": os.environ["AWS_SECRET_ACCESS_KEY"],
+            "AWS_SESSION_TOKEN": os.environ["AWS_SESSION_TOKEN"],
         },
         account_len_hint=2,
     )
@@ -48,6 +49,7 @@ async def test_enqueue_job(arq_redis: ArqRedis) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(os.environ.get("REDIS_RUNNING") is None, reason="Redis is not running")
 async def test_queue(arq_redis: ArqRedis) -> None:
     # This is the worker function that is called by arq.
     async def the_task(ctx: Dict[str, Any], *args: Any, **kwargs: Any) -> str:
