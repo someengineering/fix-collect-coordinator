@@ -56,6 +56,7 @@ async def test_enqueue_job(arq_redis: ArqRedis) -> None:
         account_len_hint=2,
     )
     job = await arq_redis.enqueue_job("collect", arg)
+    print("Job enqueued. Waiting for result...")
     assert job is not None
     try:
         result = await job.result()

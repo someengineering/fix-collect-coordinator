@@ -19,6 +19,21 @@ from argparse import Namespace
 
 from bitmath import Byte, MiB
 from cattrs import register_structure_hook, register_unstructure_hook
+from fixcloudutils.service import Dependencies
+
+
+class CollectDependencies(Dependencies):
+    @property
+    def args(self) -> Namespace:
+        return self.service("args", Namespace)
+
+    @property
+    def redis_event_url(self) -> str:
+        return f"{self.args.redis_url_nodb}/{self.args.redis_event_db}"
+
+    @property
+    def redis_worker_url(self) -> str:
+        return f"{self.args.redis_url_nodb}/{self.args.redis_worker_db}"
 
 
 def setup_process(args: Namespace) -> None:
