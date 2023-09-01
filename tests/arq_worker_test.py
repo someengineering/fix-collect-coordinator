@@ -35,7 +35,7 @@ async def test_enqueue_job(arq_redis: ArqRedis) -> None:
         env={
             "AWS_ACCESS_KEY_ID": os.environ["AWS_ACCESS_KEY_ID"],
             "AWS_SECRET_ACCESS_KEY": os.environ["AWS_SECRET_ACCESS_KEY"],
-            "AWS_SESSION_TOKEN": os.environ["AWS_SESSION_TOKEN"]
+            "AWS_SESSION_TOKEN": os.environ["AWS_SESSION_TOKEN"],
         },
         account_len_hint=2,
     )
