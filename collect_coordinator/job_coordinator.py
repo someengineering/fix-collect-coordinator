@@ -42,6 +42,7 @@ from kubernetes_asyncio.client import (
     V1Container,
     V1ResourceRequirements,
     V1EnvVar,
+    V1Toleration,
 )
 from kubernetes_asyncio.client.api_client import ApiClient
 from kubernetes_asyncio.watch import Watch
@@ -253,6 +254,14 @@ class JobCoordinator(Service):
                             requests=definition.requires.pod_spec() if definition.requires else None,
                             limits=definition.limits.pod_spec() if definition.limits else None,
                         ),
+                    )
+                ],
+                # We want to run on nodes of the jobs pool
+                node_selector={"node-role.fixcloud.io": "jobs"},
+                # All nodes in that pool are tainted, so no other pod is scheduled. Tolerate this taint.
+                tolerations=[
+                    V1Toleration(
+                        effect="NoSchedule", key="node-role.fixcloud.io/dedicated", operator="Equal", value="jobs"
                     )
                 ],
             ),
