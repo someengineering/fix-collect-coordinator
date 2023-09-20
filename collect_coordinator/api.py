@@ -18,11 +18,11 @@ from aiohttp import web
 from cattr import unstructure
 from fixcloudutils.service import Service
 
-from collect_coordinator.job_coordinator import JobCoordinator
+from collect_coordinator.job_coordinator import KubernetesJobCoordinator
 
 
 class Api(Service):
-    def __init__(self, app: web.Application, coordinator: JobCoordinator) -> None:
+    def __init__(self, app: web.Application, coordinator: KubernetesJobCoordinator) -> None:
         app.add_routes([web.get("/ping", self.ping), web.get("/status", self.status)])
         self.app = app
         self.coordinator = coordinator

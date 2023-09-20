@@ -17,19 +17,19 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
+from abc import abstractmethod, ABC
 from asyncio import Future
 from contextlib import suppress
 from enum import Enum
 from typing import Dict, Any, Optional, List, Tuple
 
 from arq.connections import ArqRedis
-from arq.worker import Worker, Function
 from attr import evolve
 from attrs import define
-from bitmath import Byte, MiB, GiB
+from bitmath import Byte
 from fixcloudutils.service import Service
+from fixcloudutils.types import Json
 from kubernetes_asyncio import client as k8s
 from kubernetes_asyncio.client import (
     V1Job,
@@ -48,7 +48,6 @@ from kubernetes_asyncio.client.api_client import ApiClient
 from kubernetes_asyncio.watch import Watch
 
 log = logging.getLogger("collect.coordinator")
-Json = Dict[str, Any]
 
 
 @define(eq=True, order=True, repr=True, frozen=True)
@@ -63,90 +62,6 @@ class ComputeResources:
         if self.memory is not None:
             limits["memory"] = f"{int(self.memory.MiB.value)}Mi"
         return limits
-
-
-@define(eq=True, order=True, repr=True, frozen=True)
-class JobDefinition:
-    id: str
-    name: str
-    image: str
-    args: List[str]
-    restart_policy: str = "Never"
-    requires: Optional[ComputeResources] = None
-    limits: Optional[ComputeResources] = None
-    env: Optional[Dict[str, str]] = None
-
-    @staticmethod
-    def from_job(job: V1Job) -> JobDefinition:
-        return JobDefinition(
-            id=job.metadata.labels.get("job-id", "n/a"),
-            name=job.metadata.name,
-            image=job.spec.template.spec.containers[0].image,
-            args=job.spec.template.spec.containers[0].args,
-            restart_policy=job.spec.template.spec.restart_policy,
-            env={e.name: e.value for e in job.spec.template.spec.containers[0].env},
-        )
-
-    @classmethod
-    def collect_definition_json(cls, js: Json) -> JobDefinition:
-        job_id = js["job_id"]  # str
-        tenant_id = js["tenant_id"]  # str
-        graphdb_server = js["graphdb_server"]  # str
-        graphdb_database = js["graphdb_database"]  # str
-        graphdb_username = js["graphdb_username"]  # str
-        graphdb_password = js["graphdb_password"]  # str
-        worker_config = json.dumps(js["worker_config"])  # Json
-        env = js.get("env")  # Optional[Dict[str, str]]
-        account_len_hint = js.get("account_len_hint")  # Optional[int]
-        if account_len_hint is None:
-            # account len size unknown: make sure we can collect and are reasonable fast
-            requires = ComputeResources(cores=4, memory=GiB(5))
-            limits = ComputeResources(cores=4, memory=GiB(20))
-        elif account_len_hint == 1:
-            requires = ComputeResources(cores=1, memory=MiB(512))
-            limits = ComputeResources(cores=1, memory=GiB(2))
-        elif account_len_hint < 10:
-            requires = ComputeResources(cores=2, memory=GiB(3))
-            limits = ComputeResources(cores=4, memory=GiB(10))
-        else:
-            requires = ComputeResources(cores=4, memory=GiB(5))
-            limits = None
-
-        coordinator_args = [
-            "--write",
-            "resoto.worker.yaml=WORKER_CONFIG",
-            "--job-id",
-            job_id,
-            "--tenant-id",
-            tenant_id,
-            "--redis-url",
-            "redis://redis-master.fix.svc.cluster.local:6379/0",
-        ]
-        core_args = [
-            "--graphdb-bootstrap-do-not-secure",
-            "--graphdb-server",
-            graphdb_server,
-            "--graphdb-database",
-            graphdb_database,
-            "--graphdb-username",
-            graphdb_username,
-            "--graphdb-password",
-            graphdb_password,
-            "--override-path",
-            "/home/resoto/resoto.worker.yaml",
-            # "--debug",
-        ]
-        worker_args: List[str] = []
-
-        return JobDefinition(
-            id=job_id,
-            name=f"collect-single-{tenant_id}",
-            image="someengineering/fix-collect-single:edge",
-            args=[*coordinator_args, "---", *core_args, "---", *worker_args],
-            requires=requires,
-            limits=limits,
-            env={"WORKER_CONFIG": worker_config, "RESOTO_LOG_TEXT": "true", **(env or {})},
-        )
 
 
 class JobStatus(Enum):
@@ -182,6 +97,29 @@ class JobReference:
         return JobReference(name=job.metadata.name, status=status)
 
 
+@define(eq=True, order=True, repr=True, frozen=True)
+class JobDefinition:
+    id: str
+    name: str
+    image: str
+    args: List[str]
+    restart_policy: str = "Never"
+    requires: Optional[ComputeResources] = None
+    limits: Optional[ComputeResources] = None
+    env: Optional[Dict[str, str]] = None
+
+    @staticmethod
+    def from_job(job: V1Job) -> JobDefinition:
+        return JobDefinition(
+            id=job.metadata.annotations.get("job-id", "n/a"),
+            name=job.metadata.name,
+            image=job.spec.template.spec.containers[0].image,
+            args=job.spec.template.spec.containers[0].args,
+            restart_policy=job.spec.template.spec.restart_policy,
+            env={e.name: e.value for e in (job.spec.template.spec.containers[0].env or [])},
+        )
+
+
 @define(eq=True, order=True, repr=True)
 class RunningJob:
     definition: JobDefinition
@@ -189,7 +127,18 @@ class RunningJob:
     future: Future[bool]
 
 
-class JobCoordinator(Service):
+class JobCoordinator(Service, ABC):
+    @abstractmethod
+    async def start_job(self, definition: JobDefinition) -> Future[bool]:
+        pass
+
+    @property
+    @abstractmethod
+    def max_parallel(self) -> int:
+        pass
+
+
+class KubernetesJobCoordinator(JobCoordinator):
     def __init__(
         self,
         coordinator_id: str,
@@ -203,13 +152,11 @@ class JobCoordinator(Service):
         self.api_client = api_client
         self.batch = k8s.BatchV1Api(api_client)
         self.namespace = namespace
-        self.max_parallel = max_parallel
+        self.__max_parallel = max_parallel
         self.running_jobs: Dict[str, RunningJob] = {}
         self.running_jobs_lock = asyncio.Lock()
         self.job_queue_lock = asyncio.Lock()
         self.job_queue: List[Tuple[JobDefinition, Future[bool]]] = []
-        self.worker: Optional[Worker] = None
-        self.redis_worker_task: Optional[asyncio.Task[Any]] = None
         self.watcher: Optional[asyncio.Task[Any]] = None
 
     async def start_job(self, definition: JobDefinition) -> Future[bool]:
@@ -218,6 +165,10 @@ class JobCoordinator(Service):
             self.job_queue.append((definition, result))
         await self.__schedule_next()
         return result
+
+    @property
+    def max_parallel(self) -> int:
+        return self.__max_parallel
 
     def __running_job_unsafe(self, v: V1Job) -> RunningJob:
         # note: no lock used here on purpose: caller should acquire the lock
@@ -239,7 +190,8 @@ class JobCoordinator(Service):
 
     async def __schedule_job_unsafe(self, definition: JobDefinition, result: Future[bool]) -> JobReference:
         # note: no lock used here on purpose: caller should acquire the lock
-        uname = definition.name + "-" + definition.id
+        uname = definition.name
+        # uname = definition.name + "-" + definition.id
         pod_template = V1PodTemplateSpec(
             spec=V1PodSpec(
                 restart_policy=definition.restart_policy,
@@ -271,7 +223,8 @@ class JobCoordinator(Service):
             kind="Job",
             metadata=V1ObjectMeta(
                 name=uname,
-                labels={"app": "collect-coordinator", "coordinator-id": self.coordinator_id, "job-id": definition.id},
+                labels={"app": "collect-coordinator", "coordinator-id": self.coordinator_id},
+                annotations={"job-id": definition.id},
             ),
             spec=V1JobSpec(
                 backoff_limit=0,
@@ -367,59 +320,12 @@ class JobCoordinator(Service):
         await self.__reconcile()
         self.watcher = asyncio.create_task(self.__watch_jobs())
 
-        async def collect(ctx: Dict[Any, Any], *args: Any, **kwargs: Any) -> bool:
-            log.debug(f"Collect function called with ctx: {ctx}, args: {args}, kwargs: {kwargs}")
-            job_id: str = ctx["job_id"]
-            # TODO: value will be encrypted. We would expect a string: decrypt and parse json.
-            if len(args) == 1 and isinstance(args[0], dict):
-                data = args[0]
-                data["job_id"] = job_id
-                jd = JobDefinition.collect_definition_json(data)
-                log.info(f"Received collect job {jd.name}")
-                future = await self.start_job(jd)
-                log.info(f"Collect job {jd.name} started. Wait for the job to finish.")
-                return await future
-            else:
-                message = f"Invalid arguments for collect function. Got {args}. Expect one arg of type Dict[str, Any]."
-                log.error(message)
-                raise ValueError(message)
-
-        worker = Worker(
-            functions=[
-                Function(
-                    name="collect",
-                    coroutine=collect,
-                    timeout_s=3600,
-                    keep_result_s=180,
-                    keep_result_forever=False,
-                    max_tries=1,
-                )
-            ],
-            job_timeout=3600,  # 1 hour
-            redis_pool=self.redis,
-            max_jobs=self.max_parallel,
-            keep_result=180,
-            retry_jobs=False,
-            handle_signals=False,
-            log_results=False,
-        )
-        self.worker = worker
-        self.redis_worker_task = asyncio.create_task(worker.async_run())
-
     async def stop(self) -> None:
-        if self.worker:
-            await self.worker.close()
-            self.worker = None
         if self.watcher and not self.watcher.done():
             self.watcher.cancel()
             with suppress(asyncio.CancelledError):
                 await self.watcher
             self.watcher = None
-        if self.redis_worker_task and not self.redis_worker_task.done():
-            self.redis_worker_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await self.redis_worker_task
-            self.redis_worker_task = None
         for name, running_job in self.running_jobs.items():
             # The process stops and the job is still running.
             # Choices:

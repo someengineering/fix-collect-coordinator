@@ -14,17 +14,11 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import asyncio
-import os
-from contextlib import suppress
-from typing import Dict, Any, List
+from typing import List
 
 import pytest
+from arq.connections import ArqRedis
 from attr import define
-from arq import create_pool
-from arq.connections import RedisSettings, ArqRedis
-from arq.worker import Worker, Function
-from pytest import fixture
 
 
 @define
@@ -34,9 +28,11 @@ class ExampleData:
     bla: List[int]
 
 
-@fixture
-async def arq_redis() -> ArqRedis:
-    return await create_pool(RedisSettings(host="localhost", port=6379, database=5))
+@pytest.mark.skip(reason="only for ingesting test data")
+async def test_ping(arq_redis: ArqRedis) -> None:
+    job = await arq_redis.enqueue_job("ping")
+    assert job is not None
+    print("Got result: ", await job.result())
 
 
 @pytest.mark.skip(reason="only for ingesting test data")
@@ -47,13 +43,14 @@ async def test_enqueue_job(arq_redis: ArqRedis) -> None:
         graphdb_database="db3",
         graphdb_username="resoto",
         graphdb_password="",
-        worker_config={"resotoworker": {"collector": ["aws"]}},
-        env={
-            "AWS_ACCESS_KEY_ID": os.environ["AWS_ACCESS_KEY_ID"],
-            "AWS_SECRET_ACCESS_KEY": os.environ["AWS_SECRET_ACCESS_KEY"],
-            "AWS_SESSION_TOKEN": os.environ["AWS_SESSION_TOKEN"],
-        },
-        account_len_hint=2,
+        account=dict(
+            kind="aws_account_information",
+            aws_account_id="123456789012",
+            aws_account_name="test",
+            aws_role_arn="arn:aws:iam::123456789012:role/test",
+            external_id="test",
+        ),
+        env={"test": "test"},
     )
     job = await arq_redis.enqueue_job("collect", arg)
     print("Job enqueued. Waiting for result...")
@@ -63,43 +60,3 @@ async def test_enqueue_job(arq_redis: ArqRedis) -> None:
         print(result)
     except Exception as e:
         print(e)
-
-
-@pytest.mark.asyncio
-@pytest.mark.skipif(os.environ.get("REDIS_RUNNING") is None, reason="Redis is not running")
-async def test_queue(arq_redis: ArqRedis) -> None:
-    # This is the worker function that is called by arq.
-    async def the_task(ctx: Dict[str, Any], *args: Any, **kwargs: Any) -> str:
-        url, num, data = args
-        assert isinstance(url, str)
-        assert isinstance(num, int)
-        assert isinstance(data, ExampleData)
-        await asyncio.sleep(1)
-        return "yes"
-
-    # Enqueue 3 jobs.
-    jobs = [
-        await arq_redis.enqueue_job("the_task", url, 123, ExampleData(1, "foo", [1, 2, 3]))
-        for url in ("https://facebook.com", "https://microsoft.com", "https://github.com")
-    ]
-
-    # Create a worker and process the jobs.
-    worker = Worker(
-        functions=[Function("the_task", the_task, None, None, None, None)],
-        redis_pool=arq_redis,
-        max_jobs=10,
-        poll_delay=0.1,
-        keep_result=3,
-    )
-    task = asyncio.create_task(worker.async_run())
-
-    # Wait for the jobs to finish.
-    for job in jobs:
-        assert job is not None
-        result = await job.result()
-        assert result == "yes"
-
-    # Stop the worker.
-    await worker.close()
-    with suppress(Exception):
-        await task
