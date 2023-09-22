@@ -10,8 +10,8 @@ classifiers = [ "Programming Language :: Python :: 3" ]
 readme = {file="README.md", content-type="text/markdown"}
 
 dependencies = [
-    "fixcloudutils",
-    "kubernetes_asyncio",
+    "fixcloudutils[redis, prometheus]",
+    "kubernetes-asyncio",
     "attrs",
     "cattrs",
     "bitmath",

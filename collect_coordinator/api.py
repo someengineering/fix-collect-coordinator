@@ -14,21 +14,27 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from aiohttp import web
+from aiohttp.web import Request, Response, Application, get, json_response
 from cattr import unstructure
 from fixcloudutils.service import Service
+import prometheus_client
 
 from collect_coordinator.job_coordinator import KubernetesJobCoordinator
 
 
 class Api(Service):
-    def __init__(self, app: web.Application, coordinator: KubernetesJobCoordinator) -> None:
-        app.add_routes([web.get("/ping", self.ping), web.get("/status", self.status)])
+    def __init__(self, app: Application, coordinator: KubernetesJobCoordinator) -> None:
+        app.add_routes([get("/ping", self.ping), get("/status", self.status), get("/metrics", self.metrics)])
         self.app = app
         self.coordinator = coordinator
 
-    async def ping(self, _: web.Request) -> web.Response:
-        return web.Response(text="pong")
+    async def ping(self, _: Request) -> Response:
+        return Response(text="pong")
 
-    async def status(self, _: web.Request) -> web.Response:
-        return web.json_response({"queue": unstructure(self.coordinator.job_queue)})
+    async def status(self, _: Request) -> Response:
+        return json_response({"queue": unstructure(self.coordinator.job_queue)})
+
+    async def metrics(self, _: Request) -> Response:
+        resp = Response(body=prometheus_client.generate_latest())
+        resp.content_type = prometheus_client.CONTENT_TYPE_LATEST
+        return resp
