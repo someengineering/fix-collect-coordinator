@@ -16,6 +16,7 @@
 
 import asyncio
 import logging
+import os
 import socket
 from argparse import ArgumentParser, Namespace
 from contextlib import suppress
@@ -29,7 +30,8 @@ from kubernetes_asyncio import config
 from kubernetes_asyncio.client import ApiClient
 
 from collect_coordinator.api import Api
-from collect_coordinator.job_coordinator import JobCoordinator
+from collect_coordinator.worker_queue import WorkerQueue
+from collect_coordinator.job_coordinator import KubernetesJobCoordinator
 from collect_coordinator.util import setup_process, CollectDependencies
 
 log = logging.getLogger("collect.coordinator")
@@ -40,6 +42,9 @@ def start(args: Namespace) -> None:
     hostname = socket.gethostname()
     deps = CollectDependencies(args=args)
     app = web.Application()
+    credentials = dict(
+        aws=dict(aws_access_key_id=args.aws_access_key_id, aws_secret_access_key=args.aws_secret_access_key)
+    )
 
     async def load_kube_config() -> None:
         loaded = False
@@ -64,8 +69,9 @@ def start(args: Namespace) -> None:
         api_client = deps.add("api_client", ApiClient(pool_threads=10))
         coordinator = deps.add(
             "job_coordinator",
-            JobCoordinator(hostname, arq_redis, api_client, args.namespace, args.max_parallel_jobs),
+            KubernetesJobCoordinator(hostname, arq_redis, api_client, args.namespace, args.max_parallel_jobs),
         )
+        deps.add("worker_queue", WorkerQueue(arq_redis, coordinator, credentials))
         deps.add("api", Api(app, coordinator))
         await deps.start()
 
@@ -107,6 +113,8 @@ def main() -> None:
     ap.add_argument("--redis-event-db", type=int, help="Redis worker db. Default to 0", default=0)
     ap.add_argument("--redis-worker-db", type=int, help="Redis worker db. Default to 5", default=5)
     ap.add_argument("--max-parallel-jobs", type=int, default=100, help="Jobs to spawn in parallel. Defaults to 100.")
+    ap.add_argument("--aws-access-key-id", help="AWS access key id.", default=os.environ.get("AWS_ACCESS_KEY_ID"))
+    ap.add_argument("--aws-secret-access-key", help="AWS secret.", default=os.environ.get("AWS_SECRET_ACCESS_KEY"))
     args = ap.parse_args()
 
     setup_process(args)

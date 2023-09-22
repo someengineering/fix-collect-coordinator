@@ -19,11 +19,11 @@ from cattr import unstructure
 from fixcloudutils.service import Service
 import prometheus_client
 
-from collect_coordinator.job_coordinator import JobCoordinator
+from collect_coordinator.job_coordinator import KubernetesJobCoordinator
 
 
 class Api(Service):
-    def __init__(self, app: Application, coordinator: JobCoordinator) -> None:
+    def __init__(self, app: Application, coordinator: KubernetesJobCoordinator) -> None:
         app.add_routes([get("/ping", self.ping), get("/status", self.status), get("/metrics", self.metrics)])
         self.app = app
         self.coordinator = coordinator
