@@ -29,6 +29,7 @@ from arq.worker import Worker, Function
 from attr import evolve
 from attrs import define
 from bitmath import Byte, MiB, GiB
+from fixcloudutils.asyncio.timed import timed
 from fixcloudutils.service import Service
 from kubernetes_asyncio import client as k8s
 from kubernetes_asyncio.client import (
@@ -237,6 +238,7 @@ class JobCoordinator(Service):
                     log.info(f"Scheduling job {job.name}")
                     await self.__schedule_job_unsafe(job, future)
 
+    @timed("collect_coordinator", "schedule_job")
     async def __schedule_job_unsafe(self, definition: JobDefinition, result: Future[bool]) -> JobReference:
         # note: no lock used here on purpose: caller should acquire the lock
         uname = definition.name + "-" + definition.id
