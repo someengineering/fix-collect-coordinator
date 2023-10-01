@@ -172,7 +172,7 @@ class WorkerQueue(Service):
             env["AWS_CREDENTIALS"] = (
                 "[default]\n"
                 f"aws_access_key_id = {self.credentials['aws']['aws_access_key_id']}\n"
-                f"aws_secret_access_key = {self.credentials['aws']['aws_access_key_id']}\n\n"
+                f"aws_secret_access_key = {self.credentials['aws']['aws_secret_access_key']}\n\n"
                 f"[{profile}]\n"
                 f"role_arn = {role_arn}\n"
                 "source_profile = default\n"
