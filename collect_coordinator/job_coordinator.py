@@ -225,7 +225,7 @@ class KubernetesJobCoordinator(JobCoordinator):
             kind="Job",
             metadata=V1ObjectMeta(
                 name=uname,
-                labels={"app": "collect-coordinator", "coordinator-id": self.coordinator_id},
+                labels={"app": "collect-coordinator", "type": "job", "coordinator-id": self.coordinator_id},
                 annotations={"job-id": definition.id},
             ),
             spec=V1JobSpec(
