@@ -26,7 +26,7 @@ import asyncio
 import json
 import logging
 import uuid
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Set
 
 from arq.connections import ArqRedis
 from arq.worker import Worker, Function
@@ -160,6 +160,7 @@ class WorkerQueue(Service):
         ]
         worker_args: List[str] = []
         worker_config: Json = {}
+        collectors: Set[str] = set()
         env = {"RESOTO_LOG_TEXT": "true", **(env or {})}
 
         def handle_aws_account() -> None:
@@ -178,13 +179,11 @@ class WorkerQueue(Service):
                 f"external_id = {external_id}\n"
             )
             coordinator_args.extend(["--write", ".aws/credentials=AWS_CREDENTIALS"])
-            worker_config["resotoworker"] = {
-                "collector": ["aws"],
-                "aws": {
-                    "account": [account_id],
-                    "profiles": [profile],
-                    "prefer_profile_as_account_name": account_name is not None,
-                },
+            collectors.add("aws")
+            worker_config["aws"] = {
+                "account": [account_id],
+                "profiles": [profile],
+                "prefer_profile_as_account_name": account_name is not None,
             }
 
         if account["kind"] == "aws_account_information":
@@ -192,6 +191,7 @@ class WorkerQueue(Service):
         else:
             raise ValueError("Don't know how to collect account kind: {account['kind']}")
 
+        worker_config["resotoworker"] = {"collector": list(collectors)}
         env["WORKER_CONFIG"] = json.dumps(worker_config)
         return JobDefinition(
             id=job_id,
