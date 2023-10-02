@@ -20,6 +20,7 @@ from argparse import Namespace
 from bitmath import Byte, MiB
 from cattrs import register_structure_hook, register_unstructure_hook
 from fixcloudutils.service import Dependencies
+from fixcloudutils.logging import setup_logger
 
 
 class CollectDependencies(Dependencies):
@@ -37,11 +38,9 @@ class CollectDependencies(Dependencies):
 
 
 def setup_process(args: Namespace) -> None:
-    if args.debug:
-        logging.basicConfig(level=logging.DEBUG)
-        logging.getLogger("arq.worker").setLevel(logging.CRITICAL)
-    else:
-        logging.basicConfig(level=logging.INFO)
+    level = logging.DEBUG if args.debug else logging.INFO
+    setup_logger("collect.coordinator", level=level)
+    logging.getLogger("arq.worker").setLevel(logging.CRITICAL)
 
 
 # Register json structure/unstructure hooks
