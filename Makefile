@@ -83,6 +83,6 @@ venv:
 setup: clean clean-env venv
 
 freeze:
-	pip-compile  --output-file=requirements.txt --resolver=backtracking --upgrade --quiet --no-header --no-annotate --strip-extras
-	pip-compile  --output-file=requirements-dev.txt --resolver=backtracking --upgrade --quiet --no-header --no-annotate --all-extras --no-strip-extras
+	pip-compile --output-file=requirements.txt --resolver=backtracking --upgrade --quiet --no-header --no-annotate --strip-extras
+	pip-compile --output-file=requirements-dev.txt --resolver=backtracking --upgrade --quiet --no-header --no-annotate --all-extras --no-strip-extras
 
