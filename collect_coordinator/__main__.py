@@ -45,6 +45,8 @@ def start(args: Namespace) -> None:
     credentials = dict(
         aws=dict(aws_access_key_id=args.aws_access_key_id, aws_secret_access_key=args.aws_secret_access_key)
     )
+    versions = dict(fix_collect_single=args.fix_collect_single_version)
+    log.info(f"Start collect coordinator hostname={hostname}, versions={versions}.")
 
     async def load_kube_config() -> None:
         loaded = False
@@ -71,7 +73,7 @@ def start(args: Namespace) -> None:
             "job_coordinator",
             KubernetesJobCoordinator(hostname, arq_redis, api_client, args.namespace, args.max_parallel_jobs),
         )
-        deps.add("worker_queue", WorkerQueue(arq_redis, coordinator, credentials))
+        deps.add("worker_queue", WorkerQueue(arq_redis, coordinator, credentials, versions))
         deps.add("api", Api(app, coordinator))
         await deps.start()
 
@@ -115,8 +117,13 @@ def main() -> None:
     ap.add_argument("--max-parallel-jobs", type=int, default=100, help="Jobs to spawn in parallel. Defaults to 100.")
     ap.add_argument("--aws-access-key-id", help="AWS access key id.", default=os.environ.get("AWS_ACCESS_KEY_ID"))
     ap.add_argument("--aws-secret-access-key", help="AWS secret.", default=os.environ.get("AWS_SECRET_ACCESS_KEY"))
-    args = ap.parse_args()
+    ap.add_argument(
+        "--fix-collect-single-version",
+        help="Image version for collect single.",
+        default=os.environ.get("FIX_COLLECT_SINGLE_VERSION"),
+    )
 
+    args = ap.parse_args()
     setup_process(args)
     start(args)
 

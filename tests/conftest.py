@@ -57,7 +57,12 @@ async def arq_redis() -> AsyncIterator[ArqRedis]:
 
 @fixture
 def credentials() -> Dict[str, Dict[str, str]]:
-    return dict(aws=dict(aws_access_key_id="", aws_secret_access_key=""))
+    return dict(aws=dict(aws_access_key_id="some_access", aws_secret_access_key="some_secret"))
+
+
+@fixture
+def versions() -> Dict[str, str]:
+    return dict(fix_collect_single="0.0.1")
 
 
 @fixture
@@ -67,6 +72,9 @@ def coordinator() -> LazyJobCoordinator:
 
 @fixture
 async def worker_queue(
-    arq_redis: ArqRedis, coordinator: LazyJobCoordinator, credentials: Dict[str, Dict[str, str]]
+    arq_redis: ArqRedis,
+    coordinator: LazyJobCoordinator,
+    credentials: Dict[str, Dict[str, str]],
+    versions: Dict[str, str],
 ) -> WorkerQueue:
-    return WorkerQueue(arq_redis, coordinator, credentials)
+    return WorkerQueue(arq_redis, coordinator, credentials, versions)
