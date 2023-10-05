@@ -83,6 +83,8 @@ def test_read_job_definition(worker_queue: WorkerQueue, example_definition: Json
         "e",
         "--override-path",
         "/home/resoto/resoto.worker.yaml",
+        "--ca-cert",
+        "/etc/ssl/certs/ca.crt",
         "---",
     ]
     assert job_def.env == {
@@ -93,7 +95,6 @@ def test_read_job_definition(worker_queue: WorkerQueue, example_definition: Json
         "role_arn = arn:aws:iam::123456789012:role/test\n"
         "source_profile = default\n"
         "external_id = test\n",
-        "RESOTO_LOG_TEXT": "true",
         "WORKER_CONFIG": '{"aws": {"account": '
         '["123456789012"], "profiles": ["test"], '
         '"prefer_profile_as_account_name": true}, '

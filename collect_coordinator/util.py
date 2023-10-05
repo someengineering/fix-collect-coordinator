@@ -16,6 +16,8 @@
 
 import logging
 from argparse import Namespace
+from pathlib import Path
+from typing import Callable
 
 from bitmath import Byte, MiB
 from cattrs import register_structure_hook, register_unstructure_hook
@@ -35,6 +37,17 @@ class CollectDependencies(Dependencies):
     @property
     def redis_worker_url(self) -> str:
         return f"{self.args.redis_url_nodb}/{self.args.redis_worker_db}"
+
+
+def is_file(message: str) -> Callable[[str], Path]:
+    def check_file(path: str) -> Path:
+        resolved = Path(path).expanduser().resolve(strict=True)
+        if resolved.is_file():
+            return resolved
+        else:
+            raise AttributeError(f"{message}: path {path} is not a file!")
+
+    return check_file
 
 
 def setup_process(args: Namespace) -> None:

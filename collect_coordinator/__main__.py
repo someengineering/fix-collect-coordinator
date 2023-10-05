@@ -20,6 +20,7 @@ import os
 import socket
 from argparse import ArgumentParser, Namespace
 from contextlib import suppress
+from dataclasses import replace
 from typing import AsyncIterator, TypeVar
 
 from aiohttp import web
@@ -30,9 +31,9 @@ from kubernetes_asyncio import config
 from kubernetes_asyncio.client import ApiClient
 
 from collect_coordinator.api import Api
-from collect_coordinator.worker_queue import WorkerQueue
 from collect_coordinator.job_coordinator import KubernetesJobCoordinator
-from collect_coordinator.util import setup_process, CollectDependencies
+from collect_coordinator.util import setup_process, CollectDependencies, is_file
+from collect_coordinator.worker_queue import WorkerQueue
 
 log = logging.getLogger("collect.coordinator")
 T = TypeVar("T")
@@ -45,7 +46,7 @@ def start(args: Namespace) -> None:
     credentials = dict(
         aws=dict(aws_access_key_id=args.aws_access_key_id, aws_secret_access_key=args.aws_secret_access_key)
     )
-    versions = dict(fix_collect_single=args.fix_collect_single_version)
+    versions = dict(fix_collect_single=(args.fix_collect_single_version or "edge"))
     log.info(f"Start collect coordinator hostname={hostname}, versions={versions}.")
 
     async def load_kube_config() -> None:
@@ -67,7 +68,7 @@ def start(args: Namespace) -> None:
 
     async def on_start() -> None:
         await load_kube_config()
-        arq_redis = await create_pool(RedisSettings.from_dsn(deps.redis_worker_url))
+        arq_redis = await create_pool(replace(RedisSettings.from_dsn(deps.redis_worker_url), ssl_ca_certs=args.ca_cert))
         api_client = deps.add("api_client", ApiClient(pool_threads=10))
         coordinator = deps.add(
             "job_coordinator",
@@ -121,6 +122,11 @@ def main() -> None:
         "--fix-collect-single-version",
         help="Image version for collect single.",
         default=os.environ.get("FIX_COLLECT_SINGLE_VERSION"),
+    )
+    ap.add_argument(
+        "--ca-cert",
+        type=is_file("can not parse --ca-cert"),
+        help="Path to a single file in PEM format containing the CA certificate.",
     )
 
     args = ap.parse_args()
