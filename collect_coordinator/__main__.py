@@ -45,7 +45,7 @@ def start(args: Namespace) -> None:
     credentials = dict(
         aws=dict(aws_access_key_id=args.aws_access_key_id, aws_secret_access_key=args.aws_secret_access_key)
     )
-    versions = dict(fix_collect_single=args.fix_collect_single_version)
+    versions = dict(fix_collect_single=(args.fix_collect_single_version or "edge"))
     log.info(f"Start collect coordinator hostname={hostname}, versions={versions}.")
 
     async def load_kube_config() -> None:

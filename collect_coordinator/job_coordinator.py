@@ -33,6 +33,7 @@ from fixcloudutils.service import Service
 from fixcloudutils.types import Json
 from kubernetes_asyncio import client as k8s
 from kubernetes_asyncio.client import (
+    V1Volume,
     V1Job,
     V1JobStatus,
     ApiException,
@@ -42,8 +43,10 @@ from kubernetes_asyncio.client import (
     V1PodSpec,
     V1Container,
     V1ResourceRequirements,
+    V1SecretVolumeSource,
     V1EnvVar,
     V1Toleration,
+    V1VolumeMount,
 )
 from kubernetes_asyncio.client.api_client import ApiClient
 from kubernetes_asyncio.watch import Watch
@@ -208,6 +211,8 @@ class KubernetesJobCoordinator(JobCoordinator):
                             requests=definition.requires.pod_spec() if definition.requires else None,
                             limits=definition.limits.pod_spec() if definition.limits else None,
                         ),
+                        # Mount certificates under /etc/ssl/certs
+                        volume_mounts=[V1VolumeMount(name="cert-secret", mount_path="/etc/ssl/certs", read_only=True)],
                     )
                 ],
                 # We want to run on nodes of the jobs pool
@@ -216,6 +221,12 @@ class KubernetesJobCoordinator(JobCoordinator):
                 tolerations=[
                     V1Toleration(
                         effect="NoSchedule", key="node-role.fixcloud.io/dedicated", operator="Equal", value="jobs"
+                    )
+                ],
+                # Make ssl certificates available to the pod
+                volumes=[
+                    V1Volume(
+                        name="cert-secret", secret=V1SecretVolumeSource(secret_name="fix-collect-coordinator-jobs-cert")
                     )
                 ],
             ),

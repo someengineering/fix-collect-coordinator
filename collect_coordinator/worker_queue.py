@@ -65,7 +65,7 @@ class WorkerQueue(Service):
                 jd = self.parse_collect_definition_json(data)
             except Exception as e:
                 message = f"Failed to parse collect definition json: {e}"
-                log.error(message)
+                log.error(message, exc_info=True)
                 raise ValueError(message) from e
             log.info(f"Received collect job {jd.name}")
             future = await self.coordinator.start_job(jd)
@@ -164,11 +164,13 @@ class WorkerQueue(Service):
             graphdb_password,
             "--override-path",
             "/home/resoto/resoto.worker.yaml",
+            "--ca-cert",  # make the ca available to core
+            "/etc/ssl/certs/ca.crt",
         ]
         worker_args: List[str] = []
         worker_config: Json = {}
         collectors: Set[str] = set()
-        env = {"RESOTO_LOG_TEXT": "true", **(env or {})}
+        env = env or {}
 
         def handle_aws_account() -> None:
             account_id = account["aws_account_id"]
