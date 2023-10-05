@@ -119,5 +119,5 @@ jobs:
           cd setup-infra
           yq eval ".images[] |= select(.name == \"someengineering/fix-collect-coordinator\").newTag |= \"${short_sha}\"" -i argocd/envs/dev/fix-collect-coordinator/kustomization.yaml
           git add .
-          git commit -m "Bump fixbackend on dev to ${short_sha}" 
+          git commit -m "Bump fix-collect-coordinator on dev to ${short_sha}" 
           git push origin main
