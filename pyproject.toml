@@ -34,6 +34,11 @@ test = [
     "pytest-asyncio",
     "pytest-cov",
     "tox",
+    # all type shed stubs
+    "types-pyOpenSSL",
+    "types-pytz",
+    "types-requests",
+    "types-setuptools",
 ]
 
 

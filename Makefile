@@ -1,4 +1,4 @@
-.PHONY: clean clean-test clean-pyc clean-build clean-env docs help setup test test-all
+.PHONY: clean clean-test clean-pyc clean-build clean-env docs help setup test test-all freeze
 .DEFAULT_GOAL := help
 .SILENT: clean clean-build clean-pyc clean-test setup
 
@@ -76,13 +76,13 @@ coverage: ## check code coverage quickly with the default Python
 venv:
 	python3 -m venv venv --prompt "collect_coordinator"
 	. ./venv/bin/activate && python3 -m pip install --upgrade pip
+	. ./venv/bin/activate && pip install -r requirements-dev.txt
 	. ./venv/bin/activate && pip install -e ".[test]"
 	. ./venv/bin/activate && mypy --install-types --non-interactive collect_coordinator tests
 
 setup: clean clean-env venv
 
-list-outdated:
-	pip list --outdated
+freeze:
+	pip-compile --output-file=requirements.txt --resolver=backtracking --upgrade --quiet --no-header --no-annotate --strip-extras
+	pip-compile --output-file=requirements-dev.txt --resolver=backtracking --upgrade --quiet --no-header --no-annotate --all-extras --no-strip-extras
 
-install-latest:
-	pip list --outdated --format=freeze | grep -v '^\-e' | cut -d = -f 1  | xargs -n1 pip install -U
