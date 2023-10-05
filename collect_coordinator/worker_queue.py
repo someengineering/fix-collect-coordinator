@@ -41,12 +41,19 @@ log = logging.getLogger("collect.coordinator")
 
 
 class WorkerQueue(Service):
-    def __init__(self, redis: ArqRedis, coordinator: JobCoordinator, credentials: Dict[str, Dict[str, str]]) -> None:
+    def __init__(
+        self,
+        redis: ArqRedis,
+        coordinator: JobCoordinator,
+        credentials: Dict[str, Dict[str, str]],
+        versions: Dict[str, str],
+    ) -> None:
         self.redis = redis
         self.coordinator = coordinator
         self.worker: Optional[Worker] = None
         self.redis_worker_task: Optional[asyncio.Task[Any]] = None
         self.credentials = credentials
+        self.versions = versions
 
     async def collect(self, ctx: Dict[Any, Any], *args: Any, **kwargs: Any) -> bool:
         log.debug(f"Collect function called with ctx: {ctx}, args: {args}, kwargs: {kwargs}")
@@ -196,7 +203,7 @@ class WorkerQueue(Service):
         return JobDefinition(
             id=job_id,
             name="collect" + str(uuid.uuid1()),
-            image="someengineering/fix-collect-single:edge",
+            image="someengineering/fix-collect-single:" + self.versions.get("fix_collect_single", "edge"),
             args=[*coordinator_args, "---", *core_args, "---", *worker_args],
             requires=requires,
             limits=limits,
