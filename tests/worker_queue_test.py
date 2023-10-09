@@ -68,7 +68,7 @@ def test_read_job_definition(worker_queue: WorkerQueue, example_definition: Json
         "--tenant-id",
         "a",
         "--redis-url",
-        "redis://redis-master.fix.svc.cluster.local:6379/0",
+        "redis://localhost:6379/0",
         "--write",
         ".aws/credentials=AWS_CREDENTIALS",
         "---",

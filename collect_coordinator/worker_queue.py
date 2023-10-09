@@ -47,6 +47,7 @@ class WorkerQueue(Service):
         coordinator: JobCoordinator,
         credentials: Dict[str, Dict[str, str]],
         versions: Dict[str, str],
+        redis_event_url: str,
     ) -> None:
         self.redis = redis
         self.coordinator = coordinator
@@ -54,6 +55,7 @@ class WorkerQueue(Service):
         self.redis_worker_task: Optional[asyncio.Task[Any]] = None
         self.credentials = credentials
         self.versions = versions
+        self.redis_event_url = redis_event_url
 
     async def collect(self, ctx: Dict[Any, Any], *args: Any, **kwargs: Any) -> bool:
         log.debug(f"Collect function called with ctx: {ctx}, args: {args}, kwargs: {kwargs}")
@@ -150,7 +152,7 @@ class WorkerQueue(Service):
             "--tenant-id",
             tenant_id,
             "--redis-url",
-            "redis://redis-master.fix.svc.cluster.local:6379/0",
+            self.redis_event_url,
         ]
         core_args = [
             "--graphdb-bootstrap-do-not-secure",
@@ -204,7 +206,7 @@ class WorkerQueue(Service):
         env["WORKER_CONFIG"] = json.dumps(worker_config)
         return JobDefinition(
             id=job_id,
-            name="collect" + str(uuid.uuid1()),
+            name="collect-" + str(uuid.uuid1()),
             image="someengineering/fix-collect-single:" + self.versions.get("fix_collect_single", "edge"),
             args=[*coordinator_args, "---", *core_args, "---", *worker_args],
             requires=requires,
