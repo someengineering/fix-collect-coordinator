@@ -74,7 +74,7 @@ def start(args: Namespace) -> None:
             "job_coordinator",
             KubernetesJobCoordinator(hostname, arq_redis, api_client, args.namespace, args.max_parallel_jobs),
         )
-        deps.add("worker_queue", WorkerQueue(arq_redis, coordinator, credentials, versions))
+        deps.add("worker_queue", WorkerQueue(arq_redis, coordinator, credentials, versions, deps.redis_event_url))
         deps.add("api", Api(app, coordinator))
         await deps.start()
 
