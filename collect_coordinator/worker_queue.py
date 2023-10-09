@@ -153,6 +153,8 @@ class WorkerQueue(Service):
             tenant_id,
             "--redis-url",
             self.redis_event_url,
+            "--ca-cert",
+            "/etc/ssl/certs/ca.crt",
         ]
         core_args = [
             "--graphdb-bootstrap-do-not-secure",
