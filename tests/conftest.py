@@ -20,7 +20,7 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from asyncio import Future
-from typing import Dict, Tuple, AsyncIterator
+from typing import Dict, Tuple, AsyncIterator, Any
 
 from arq import create_pool
 from arq.connections import RedisSettings, ArqRedis
@@ -56,8 +56,15 @@ async def arq_redis() -> AsyncIterator[ArqRedis]:
 
 
 @fixture
-def credentials() -> Dict[str, Dict[str, str]]:
-    return dict(aws=dict(aws_access_key_id="some_access", aws_secret_access_key="some_secret"))
+def credentials() -> Dict[str, Any]:
+    return dict(
+        aws=dict(
+            aws_access_key_id="some_access",
+            aws_secret_access_key="some_secret",
+        ),
+        redis_password="test",
+        graphdb_root_password="test",
+    )
 
 
 @fixture
@@ -77,4 +84,4 @@ async def worker_queue(
     credentials: Dict[str, Dict[str, str]],
     versions: Dict[str, str],
 ) -> WorkerQueue:
-    return WorkerQueue(arq_redis, coordinator, credentials, versions, "redis://localhost:6379/0", "")
+    return WorkerQueue(arq_redis, coordinator, credentials, versions, "redis://localhost:6379/0")

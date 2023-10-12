@@ -55,7 +55,7 @@ def example_definition() -> Json:
     }
 
 
-@pytest.mark.skipif(os.environ.get("REDIS_RUNNING", "false") != "true", reason="Redis not running")
+# @pytest.mark.skipif(os.environ.get("REDIS_RUNNING", "false") != "true", reason="Redis not running")
 def test_read_job_definition(worker_queue: WorkerQueue, example_definition: Json) -> None:
     job_def = worker_queue.parse_collect_definition_json(example_definition)
     assert job_def.name.startswith("collect")
@@ -75,8 +75,6 @@ def test_read_job_definition(worker_queue: WorkerQueue, example_definition: Json
         ".aws/credentials=AWS_CREDENTIALS",
         "---",
         "--graphdb-bootstrap-do-not-secure",
-        "--graphdb-root-password",
-        "",
         "--graphdb-server",
         "b",
         "--graphdb-database",
@@ -104,6 +102,8 @@ def test_read_job_definition(worker_queue: WorkerQueue, example_definition: Json
         '"prefer_profile_as_account_name": true}, '
         '"resotoworker": {"collector": ["aws"]}}',
         "test": "test",
+        "REDIS_PASSWORD": "test",
+        "RESOTOCORE_GRAPHDB_ROOT_PASSWORD": "test",
     }
 
 
