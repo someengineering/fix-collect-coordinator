@@ -69,6 +69,8 @@ def test_read_job_definition(worker_queue: WorkerQueue, example_definition: Json
         "a",
         "--redis-url",
         "redis://localhost:6379/0",
+        "--ca-cert",
+        "/etc/ssl/certs/ca.crt",
         "--write",
         ".aws/credentials=AWS_CREDENTIALS",
         "---",
@@ -100,6 +102,8 @@ def test_read_job_definition(worker_queue: WorkerQueue, example_definition: Json
         '"prefer_profile_as_account_name": true}, '
         '"resotoworker": {"collector": ["aws"]}}',
         "test": "test",
+        "REDIS_PASSWORD": "test",
+        "RESOTOCORE_GRAPHDB_ROOT_PASSWORD": "test",
     }
 
 

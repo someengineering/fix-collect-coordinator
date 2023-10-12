@@ -44,7 +44,12 @@ def start(args: Namespace) -> None:
     deps = CollectDependencies(args=args)
     app = web.Application()
     credentials = dict(
-        aws=dict(aws_access_key_id=args.aws_access_key_id, aws_secret_access_key=args.aws_secret_access_key)
+        aws=dict(
+            aws_access_key_id=args.aws_access_key_id,
+            aws_secret_access_key=args.aws_secret_access_key,
+        ),
+        redis_password=args.redis_password,
+        graph_db_root_password=args.graph_db_root_password,
     )
     versions = dict(fix_collect_single=(args.fix_collect_single_version or "edge"))
     log.info(f"Start collect coordinator hostname={hostname}, versions={versions}.")
@@ -68,13 +73,33 @@ def start(args: Namespace) -> None:
 
     async def on_start() -> None:
         await load_kube_config()
-        arq_redis = await create_pool(replace(RedisSettings.from_dsn(deps.redis_worker_url), ssl_ca_certs=args.ca_cert))
+        arq_redis = await create_pool(
+            replace(
+                RedisSettings.from_dsn(deps.redis_worker_url), ssl_ca_certs=args.ca_cert, password=args.redis_password
+            )
+        )
         api_client = deps.add("api_client", ApiClient(pool_threads=10))
         coordinator = deps.add(
             "job_coordinator",
-            KubernetesJobCoordinator(hostname, arq_redis, api_client, args.namespace, args.max_parallel_jobs),
+            KubernetesJobCoordinator(
+                coordinator_id=hostname,
+                redis=arq_redis,
+                api_client=api_client,
+                namespace=args.namespace,
+                max_parallel=args.max_parallel_jobs,
+                env={},
+            ),
         )
-        deps.add("worker_queue", WorkerQueue(arq_redis, coordinator, credentials, versions, deps.redis_event_url))
+        deps.add(
+            "worker_queue",
+            WorkerQueue(
+                redis=arq_redis,
+                coordinator=coordinator,
+                credentials=credentials,
+                versions=versions,
+                redis_event_url=deps.redis_event_url,
+            ),
+        )
         deps.add("api", Api(app, coordinator))
         await deps.start()
 
@@ -118,6 +143,10 @@ def main() -> None:
     ap.add_argument("--max-parallel-jobs", type=int, default=100, help="Jobs to spawn in parallel. Defaults to 100.")
     ap.add_argument("--aws-access-key-id", help="AWS access key id.", default=os.environ.get("AWS_ACCESS_KEY_ID"))
     ap.add_argument("--aws-secret-access-key", help="AWS secret.", default=os.environ.get("AWS_SECRET_ACCESS_KEY"))
+    ap.add_argument("--redis-password", help="Redis password.", default=os.environ.get("REDIS_PASSWORD", ""))
+    ap.add_argument(
+        "--graph-db-root-password", help="AWS secret.", default=os.environ.get("GRAPH_DB_ROOT_PASSWORD", "")
+    )
     ap.add_argument(
         "--fix-collect-single-version",
         help="Image version for collect single.",

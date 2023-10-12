@@ -132,7 +132,7 @@ class WorkerQueue(Service):
         graphdb_username = js["graphdb_username"]  # str
         graphdb_password = js["graphdb_password"]  # str
         account = js["account"]
-        env = js.get("env")  # Optional[Dict[str, str]]
+        env = js.get("env") or {}  # Optional[Dict[str, str]]
         account_len_hint = js.get("account_len_hint", 1)  # Optional[int]
         if account_len_hint == 1:
             requires = ComputeResources(cores=1, memory=MiB(512))
@@ -157,7 +157,7 @@ class WorkerQueue(Service):
             "/etc/ssl/certs/ca.crt",
         ]
         core_args = [
-            "--graphdb-bootstrap-do-not-secure",
+            "--graphdb-bootstrap-do-not-secure",  # root password comes via the environment
             "--graphdb-server",
             graphdb_server,
             "--graphdb-database",
@@ -174,7 +174,11 @@ class WorkerQueue(Service):
         worker_args: List[str] = []
         worker_config: Json = {}
         collectors: Set[str] = set()
-        env = env or {}
+        # make the root password available via env
+        if graph_db_root_password := self.credentials.get("graphdb_root_password"):
+            env["RESOTOCORE_GRAPHDB_ROOT_PASSWORD"] = graph_db_root_password
+        if redis_password := self.credentials.get("redis_password"):
+            env["REDIS_PASSWORD"] = redis_password
 
         def handle_aws_account() -> None:
             account_id = account["aws_account_id"]

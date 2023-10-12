@@ -150,6 +150,7 @@ class KubernetesJobCoordinator(JobCoordinator):
         api_client: ApiClient,
         namespace: str,
         max_parallel: int,
+        env: Dict[str, str],
     ) -> None:
         self.coordinator_id = coordinator_id
         self.redis = redis
@@ -157,6 +158,7 @@ class KubernetesJobCoordinator(JobCoordinator):
         self.batch = k8s.BatchV1Api(api_client)
         self.namespace = namespace
         self.__max_parallel = max_parallel
+        self.env = env
         self.running_jobs: Dict[str, RunningJob] = {}
         self.running_jobs_lock = asyncio.Lock()
         self.job_queue_lock = asyncio.Lock()
@@ -197,13 +199,14 @@ class KubernetesJobCoordinator(JobCoordinator):
         # note: no lock used here on purpose: caller should acquire the lock
         uname = definition.name
         # uname = definition.name + "-" + definition.id
+        env = self.env | (definition.env or {})
         pod_template = V1PodTemplateSpec(
             spec=V1PodSpec(
                 restart_policy=definition.restart_policy,
                 containers=[
                     V1Container(
                         name=definition.name,
-                        env=[V1EnvVar(name=k, value=v) for k, v in (definition.env or {}).items()],
+                        env=[V1EnvVar(name=k, value=v) for k, v in env.items()],
                         image=definition.image,
                         image_pull_policy="Always",
                         args=definition.args,
