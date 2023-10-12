@@ -77,4 +77,4 @@ async def worker_queue(
     credentials: Dict[str, Dict[str, str]],
     versions: Dict[str, str],
 ) -> WorkerQueue:
-    return WorkerQueue(arq_redis, coordinator, credentials, versions, "redis://localhost:6379/0")
+    return WorkerQueue(arq_redis, coordinator, credentials, versions, "redis://localhost:6379/0", "")

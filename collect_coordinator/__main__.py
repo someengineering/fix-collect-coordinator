@@ -74,7 +74,17 @@ def start(args: Namespace) -> None:
             "job_coordinator",
             KubernetesJobCoordinator(hostname, arq_redis, api_client, args.namespace, args.max_parallel_jobs),
         )
-        deps.add("worker_queue", WorkerQueue(arq_redis, coordinator, credentials, versions, deps.redis_event_url))
+        deps.add(
+            "worker_queue",
+            WorkerQueue(
+                redis=arq_redis,
+                coordinator=coordinator,
+                credentials=credentials,
+                versions=versions,
+                redis_event_url=deps.redis_event_url,
+                graph_db_root_password=args.graph_db_root_password,
+            ),
+        )
         deps.add("api", Api(app, coordinator))
         await deps.start()
 
@@ -118,6 +128,9 @@ def main() -> None:
     ap.add_argument("--max-parallel-jobs", type=int, default=100, help="Jobs to spawn in parallel. Defaults to 100.")
     ap.add_argument("--aws-access-key-id", help="AWS access key id.", default=os.environ.get("AWS_ACCESS_KEY_ID"))
     ap.add_argument("--aws-secret-access-key", help="AWS secret.", default=os.environ.get("AWS_SECRET_ACCESS_KEY"))
+    ap.add_argument(
+        "--graph-db-root-password", help="AWS secret.", default=os.environ.get("GRAPH_DB_ROOT_PASSWORD", "")
+    )
     ap.add_argument(
         "--fix-collect-single-version",
         help="Image version for collect single.",

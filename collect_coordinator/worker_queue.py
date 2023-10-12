@@ -48,6 +48,7 @@ class WorkerQueue(Service):
         credentials: Dict[str, Dict[str, str]],
         versions: Dict[str, str],
         redis_event_url: str,
+        graph_db_root_password: str,
     ) -> None:
         self.redis = redis
         self.coordinator = coordinator
@@ -56,6 +57,7 @@ class WorkerQueue(Service):
         self.credentials = credentials
         self.versions = versions
         self.redis_event_url = redis_event_url
+        self.graph_db_root_password = graph_db_root_password
 
     async def collect(self, ctx: Dict[Any, Any], *args: Any, **kwargs: Any) -> bool:
         log.debug(f"Collect function called with ctx: {ctx}, args: {args}, kwargs: {kwargs}")
@@ -158,6 +160,8 @@ class WorkerQueue(Service):
         ]
         core_args = [
             "--graphdb-bootstrap-do-not-secure",
+            "--graphdb-root-password",
+            self.graph_db_root_password,
             "--graphdb-server",
             graphdb_server,
             "--graphdb-database",
