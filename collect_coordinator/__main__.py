@@ -47,9 +47,9 @@ def start(args: Namespace) -> None:
         aws=dict(
             aws_access_key_id=args.aws_access_key_id,
             aws_secret_access_key=args.aws_secret_access_key,
-            redis_password=args.redis_password,
-            graph_db_root_password=args.graph_db_root_password,
         ),
+        redis_password=args.redis_password,
+        graph_db_root_password=args.graph_db_root_password,
     )
     versions = dict(fix_collect_single=(args.fix_collect_single_version or "edge"))
     log.info(f"Start collect coordinator hostname={hostname}, versions={versions}.")
