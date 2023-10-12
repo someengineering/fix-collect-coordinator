@@ -55,7 +55,7 @@ def example_definition() -> Json:
     }
 
 
-# @pytest.mark.skipif(os.environ.get("REDIS_RUNNING", "false") != "true", reason="Redis not running")
+@pytest.mark.skipif(os.environ.get("REDIS_RUNNING", "false") != "true", reason="Redis not running")
 def test_read_job_definition(worker_queue: WorkerQueue, example_definition: Json) -> None:
     job_def = worker_queue.parse_collect_definition_json(example_definition)
     assert job_def.name.startswith("collect")
