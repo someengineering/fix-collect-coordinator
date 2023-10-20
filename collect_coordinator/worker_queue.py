@@ -175,7 +175,7 @@ class WorkerQueue(Service):
         worker_config: Json = {}
         collectors: Set[str] = set()
         # make the root password available via env
-        if graph_db_root_password := self.credentials.get("graphdb_root_password"):
+        if graph_db_root_password := self.credentials.get("graph_db_root_password"):
             env["RESOTOCORE_GRAPHDB_ROOT_PASSWORD"] = graph_db_root_password
         if redis_password := self.credentials.get("redis_password"):
             env["REDIS_PASSWORD"] = redis_password
