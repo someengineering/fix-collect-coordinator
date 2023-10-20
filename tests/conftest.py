@@ -63,7 +63,7 @@ def credentials() -> Dict[str, Any]:
             aws_secret_access_key="some_secret",
         ),
         redis_password="test",
-        graphdb_root_password="test",
+        graph_db_root_password="test",
     )
 
 
