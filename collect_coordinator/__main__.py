@@ -127,7 +127,7 @@ def start(args: Namespace) -> None:
         app.cleanup_ctx.append(on_start_stop)
         return app
 
-    web.run_app(async_initializer(), host="0.0.0.0", port=8080)
+    web.run_app(async_initializer(), host="0.0.0.0", port=8080, access_log=None)
 
 
 def main() -> None:

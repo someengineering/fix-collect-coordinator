@@ -65,6 +65,7 @@ class WorkerQueue(Service):
             data["job_id"] = job_id
             try:
                 jd = self.parse_collect_definition_json(data)
+                log.info(f"Collect function called: id={jd.id}, name={jd.name}")
             except Exception as e:
                 message = f"Failed to parse collect definition json: {e}"
                 log.error(message, exc_info=True)
