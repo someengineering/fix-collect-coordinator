@@ -53,6 +53,7 @@ async def arq_redis() -> AsyncIterator[ArqRedis]:
     pool = await create_pool(RedisSettings(host="localhost", port=6379, database=5))
     await pool.flushdb()
     yield pool
+    await pool.aclose()
 
 
 @fixture

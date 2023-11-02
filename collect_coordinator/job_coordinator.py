@@ -50,8 +50,11 @@ from kubernetes_asyncio.client import (
 )
 from kubernetes_asyncio.client.api_client import ApiClient
 from kubernetes_asyncio.watch import Watch
+from prometheus_client import Counter
 
 log = logging.getLogger("collect.coordinator")
+
+JobRuns = Counter("coordinator_job_runs", "Number of job runs", ["coordinator_id", "image", "success"])
 
 
 @define(eq=True, order=True, repr=True, frozen=True)
@@ -253,8 +256,7 @@ class KubernetesJobCoordinator(JobCoordinator):
         self.running_jobs[uname] = RunningJob(definition=definition, ref=ref, future=result)
         return ref
 
-    @staticmethod
-    async def __mark_future_done(job: RunningJob, error_message: Optional[str] = None) -> None:
+    async def __mark_future_done(self, job: RunningJob, error_message: Optional[str] = None) -> None:
         # note: no lock used here on purpose: caller should acquire the lock
         if not job.future.done():
             success = error_message is None
@@ -262,6 +264,8 @@ class KubernetesJobCoordinator(JobCoordinator):
                 job.future.set_result(True)
             else:
                 job.future.set_exception(RuntimeError("Job failed!"))
+            succ_str = "success" if success else "failed"
+            JobRuns.inc(1, dict(coordinator_id=self.coordinator_id, image=job.definition.image, success=succ_str))
 
     async def __reconcile(self) -> None:
         res = await self.batch.list_namespaced_job(
