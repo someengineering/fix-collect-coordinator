@@ -196,7 +196,7 @@ class WorkerQueue(Service):
                 "source_profile = default\n"
                 f"external_id = {external_id}\n"
             )
-            coordinator_args.extend(["--write", ".aws/credentials=AWS_CREDENTIALS"])
+            coordinator_args.extend(["--write", ".aws/credentials=AWS_CREDENTIALS", "--account-id", account_id])
             collectors.add("aws")
             worker_config["aws"] = {
                 "account": [account_id],
