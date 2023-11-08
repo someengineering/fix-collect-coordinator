@@ -265,7 +265,7 @@ class KubernetesJobCoordinator(JobCoordinator):
             else:
                 job.future.set_exception(RuntimeError("Job failed!"))
             succ_str = "success" if success else "failed"
-            JobRuns.inc(1, dict(coordinator_id=self.coordinator_id, image=job.definition.image, success=succ_str))
+            JobRuns.labels(coordinator_id=self.coordinator_id, image=job.definition.image, success=succ_str).inc()
 
     async def __reconcile(self) -> None:
         res = await self.batch.list_namespaced_job(
