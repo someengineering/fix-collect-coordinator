@@ -23,16 +23,16 @@ from asyncio import Future
 from contextlib import suppress
 from enum import Enum
 from typing import Dict, Any, Optional, List, Tuple
-from fixcloudutils.asyncio import stop_running_task
 
 from arq.connections import ArqRedis
 from attr import evolve
 from attrs import define
 from bitmath import Byte
+from fixcloudutils.asyncio import stop_running_task
 from fixcloudutils.asyncio.timed import timed
+from fixcloudutils.redis.event_stream import RedisStreamPublisher
 from fixcloudutils.service import Service
 from fixcloudutils.types import Json
-from fixcloudutils.redis.event_stream import RedisStreamPublisher
 from kubernetes_asyncio import client as k8s
 from kubernetes_asyncio.client import (
     V1Volume,

@@ -58,6 +58,7 @@ clean-env: ## remove environment
 lint: ## static code analysis
 	black --line-length 120 --check collect_coordinator tests
 	flake8 collect_coordinator
+	pylint collect_coordinator
 	mypy --python-version 3.9 --strict --install-types --non-interactive collect_coordinator tests
 
 test: ## run tests quickly with the default Python
