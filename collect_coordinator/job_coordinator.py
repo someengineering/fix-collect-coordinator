@@ -201,6 +201,7 @@ class KubernetesJobCoordinator(JobCoordinator):
                 for job, future in to_schedule:
                     log.info(f"Scheduling job {job.name}")
                     await self.__schedule_job_unsafe(job, future)
+                log.info(f"Scheduled {split_at} jobs. running={len(self.running_jobs)} queued={len(self.job_queue)}")
 
     @timed("collect_coordinator", "schedule_job")
     async def __schedule_job_unsafe(self, definition: JobDefinition, result: Future[bool]) -> JobReference:
@@ -324,11 +325,12 @@ class KubernetesJobCoordinator(JobCoordinator):
             label_selector=f"app=collect-coordinator,coordinator-id={self.coordinator_id}",
         ):
             try:
-                log.info(f"Job changed: {event}")
                 change_type = event["type"]  # ADDED, MODIFIED, DELETED
                 job = event["object"]
                 name = job.metadata.name
                 ref = JobReference.from_job(job)
+                job_id = job.metadata.annotations.get("job-id", "n/a")
+                log.info(f"Job changed: id={job_id}, name={name}, type={change_type}, status={ref.status}")
                 async with self.running_jobs_lock:
                     does_not_exist = name not in self.running_jobs
                     running_job = self.__running_job_unsafe(job)
