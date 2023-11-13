@@ -29,7 +29,7 @@ from attr import evolve
 from attrs import define
 from bitmath import Byte
 from fixcloudutils.asyncio import stop_running_task
-from fixcloudutils.asyncio.timed import timed
+from fixcloudutils.asyncio.timed import timed, perf_now
 from fixcloudutils.redis.event_stream import RedisStreamPublisher
 from fixcloudutils.service import Service
 from fixcloudutils.types import Json
@@ -52,12 +52,21 @@ from kubernetes_asyncio.client import (
 )
 from kubernetes_asyncio.client.api_client import ApiClient
 from kubernetes_asyncio.watch import Watch
-from prometheus_client import Counter
+from prometheus_client import Counter, Gauge, Histogram, utils
 from redis.asyncio import Redis
 
 log = logging.getLogger("collect.coordinator")
 
 JobRuns = Counter("coordinator_job_runs", "Number of job runs", ["coordinator_id", "image", "success"])
+JobsQueueing = Gauge("coordinator_jobs_queueing", "Number of jobs queued", ["coordinator_id"])
+JobsRunning = Gauge("coordinator_jobs_running", "Number of jobs running", ["coordinator_id"])
+JobsScheduled = Gauge("coordinator_jobs_scheduled", "Number of jobs scheduled", ["coordinator_id"])
+JobCollectionTimes = Histogram(
+    "coordinator_job_collection_times",
+    "Time to collect data",
+    ["coordinator_id"],
+    buckets=(15, 30, 60, 90, 120, 180, 240, 300, 420, 600, 900, 1200, utils.INF),
+)
 
 
 @define(eq=True, order=True, repr=True, frozen=True)
@@ -135,6 +144,7 @@ class RunningJob:
     definition: JobDefinition
     ref: JobReference
     future: Future[bool]
+    started_at: Optional[float] = None  # only available if started by this instance
 
 
 class JobCoordinator(Service, ABC):
@@ -202,6 +212,9 @@ class KubernetesJobCoordinator(JobCoordinator):
                     log.info(f"Scheduling job {job.name}")
                     await self.__schedule_job_unsafe(job, future)
                 log.info(f"scheduled={len(to_schedule)} running={len(self.running_jobs)} queued={len(self.job_queue)}")
+                JobsQueueing.labels(coordinator_id=self.coordinator_id).set(len(self.job_queue))
+                JobsRunning.labels(coordinator_id=self.coordinator_id).set(len(self.running_jobs))
+                JobsScheduled.labels(coordinator_id=self.coordinator_id).set(len(to_schedule))
 
     @timed("collect_coordinator", "schedule_job")
     async def __schedule_job_unsafe(self, definition: JobDefinition, result: Future[bool]) -> JobReference:
@@ -227,7 +240,7 @@ class KubernetesJobCoordinator(JobCoordinator):
                         volume_mounts=[V1VolumeMount(name="cert-secret", mount_path="/etc/ssl/certs", read_only=True)],
                     )
                 ],
-                # We want to run on nodes of the jobs pool
+                # We want to run on nodes of the correct pool
                 node_selector={"node-role.fixcloud.io": "jobs"},
                 # All nodes in that pool are tainted, so no other pod is scheduled. Tolerate this taint.
                 tolerations=[
@@ -259,7 +272,7 @@ class KubernetesJobCoordinator(JobCoordinator):
         )
         await self.batch.create_namespaced_job(namespace=self.namespace, body=job)
         ref = JobReference(name=uname, status=JobStatus.pending)
-        self.running_jobs[uname] = RunningJob(definition=definition, ref=ref, future=result)
+        self.running_jobs[uname] = RunningJob(definition=definition, ref=ref, future=result, started_at=perf_now())
         return ref
 
     async def __mark_future_done(self, job: RunningJob, error_message: Optional[str] = None) -> None:
@@ -273,6 +286,8 @@ class KubernetesJobCoordinator(JobCoordinator):
             # increment prometheus counter
             succ_str = "success" if success else "failed"
             JobRuns.labels(coordinator_id=self.coordinator_id, image=job.definition.image, success=succ_str).inc()
+            if started_at := job.started_at:
+                JobCollectionTimes.labels(coordinator_id=self.coordinator_id).observe(perf_now() - started_at)
             # emit a message
             await self.__done_event(success, job.definition.id, error_message)
 
