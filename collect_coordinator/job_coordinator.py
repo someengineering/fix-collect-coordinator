@@ -201,7 +201,7 @@ class KubernetesJobCoordinator(JobCoordinator):
                 for job, future in to_schedule:
                     log.info(f"Scheduling job {job.name}")
                     await self.__schedule_job_unsafe(job, future)
-                log.info(f"Scheduled {split_at} jobs. running={len(self.running_jobs)} queued={len(self.job_queue)}")
+                log.info(f"scheduled={len(to_schedule)} running={len(self.running_jobs)} queued={len(self.job_queue)}")
 
     @timed("collect_coordinator", "schedule_job")
     async def __schedule_job_unsafe(self, definition: JobDefinition, result: Future[bool]) -> JobReference:
