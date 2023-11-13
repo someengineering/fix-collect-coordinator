@@ -60,7 +60,7 @@ log = logging.getLogger("collect.coordinator")
 JobRuns = Counter("coordinator_job_runs", "Number of job runs", ["coordinator_id", "image", "success"])
 JobsQueueing = Gauge("coordinator_jobs_queueing", "Number of jobs queued", ["coordinator_id"])
 JobsRunning = Gauge("coordinator_jobs_running", "Number of jobs running", ["coordinator_id"])
-JobsScheduled = Gauge("coordinator_jobs_scheduled", "Number of jobs scheduled", ["coordinator_id"])
+JobsScheduled = Counter("coordinator_jobs_scheduled", "Number of jobs scheduled", ["coordinator_id"])
 JobCollectionTimes = Histogram(
     "coordinator_job_collection_times",
     "Time to collect data",
@@ -214,7 +214,7 @@ class KubernetesJobCoordinator(JobCoordinator):
                 log.info(f"scheduled={len(to_schedule)} running={len(self.running_jobs)} queued={len(self.job_queue)}")
                 JobsQueueing.labels(coordinator_id=self.coordinator_id).set(len(self.job_queue))
                 JobsRunning.labels(coordinator_id=self.coordinator_id).set(len(self.running_jobs))
-                JobsScheduled.labels(coordinator_id=self.coordinator_id).set(len(to_schedule))
+                JobsScheduled.labels(coordinator_id=self.coordinator_id).inc(len(to_schedule))
 
     @timed("collect_coordinator", "schedule_job")
     async def __schedule_job_unsafe(self, definition: JobDefinition, result: Future[bool]) -> JobReference:
