@@ -29,6 +29,7 @@ from arq import create_pool
 from arq.connections import RedisSettings
 from kubernetes_asyncio import config
 from kubernetes_asyncio.client import ApiClient
+from redis.asyncio import Redis
 
 from collect_coordinator.api import Api
 from collect_coordinator.job_coordinator import KubernetesJobCoordinator
@@ -73,17 +74,23 @@ def start(args: Namespace) -> None:
 
     async def on_start() -> None:
         await load_kube_config()
-        arq_redis = await create_pool(
-            replace(
-                RedisSettings.from_dsn(deps.redis_worker_url), ssl_ca_certs=args.ca_cert, password=args.redis_password
-            )
+        redis_args = dict(ssl_ca_certs=args.ca_cert) if args.redis_url_nodb.startswith("rediss") else {}
+        arq_redis_settings = replace(
+            RedisSettings.from_dsn(deps.redis_worker_url), password=args.redis_password, **redis_args
         )
+        arq_redis = deps.add("arq_redis", await create_pool(arq_redis_settings))
+        redis = deps.add(
+            "redis",
+            Redis.from_url(deps.redis_event_url, decode_responses=True, password=args.redis_password, **redis_args),
+        )
+
         api_client = deps.add("api_client", ApiClient(pool_threads=10))
         coordinator = deps.add(
             "job_coordinator",
             KubernetesJobCoordinator(
                 coordinator_id=hostname,
-                redis=arq_redis,
+                redis=redis,
+                arq_redis=arq_redis,
                 api_client=api_client,
                 namespace=args.namespace,
                 max_parallel=args.max_parallel_jobs,

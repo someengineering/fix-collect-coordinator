@@ -23,6 +23,7 @@ from asyncio import Future
 from contextlib import suppress
 from enum import Enum
 from typing import Dict, Any, Optional, List, Tuple
+from fixcloudutils.asyncio import stop_running_task
 
 from arq.connections import ArqRedis
 from attr import evolve
@@ -31,6 +32,7 @@ from bitmath import Byte
 from fixcloudutils.asyncio.timed import timed
 from fixcloudutils.service import Service
 from fixcloudutils.types import Json
+from fixcloudutils.redis.event_stream import RedisStreamPublisher
 from kubernetes_asyncio import client as k8s
 from kubernetes_asyncio.client import (
     V1Volume,
@@ -51,6 +53,7 @@ from kubernetes_asyncio.client import (
 from kubernetes_asyncio.client.api_client import ApiClient
 from kubernetes_asyncio.watch import Watch
 from prometheus_client import Counter
+from redis.asyncio import Redis
 
 log = logging.getLogger("collect.coordinator")
 
@@ -149,14 +152,15 @@ class KubernetesJobCoordinator(JobCoordinator):
     def __init__(
         self,
         coordinator_id: str,
-        redis: ArqRedis,
+        redis: Redis,
+        arq_redis: ArqRedis,
         api_client: ApiClient,
         namespace: str,
         max_parallel: int,
         env: Dict[str, str],
     ) -> None:
         self.coordinator_id = coordinator_id
-        self.redis = redis
+        self.arq_redis = arq_redis
         self.api_client = api_client
         self.batch = k8s.BatchV1Api(api_client)
         self.namespace = namespace
@@ -167,6 +171,7 @@ class KubernetesJobCoordinator(JobCoordinator):
         self.job_queue_lock = asyncio.Lock()
         self.job_queue: List[Tuple[JobDefinition, Future[bool]]] = []
         self.watcher: Optional[asyncio.Task[Any]] = None
+        self.collect_done_publisher = RedisStreamPublisher(redis, "collect-events", "collect-coordinator")
 
     async def start_job(self, definition: JobDefinition) -> Future[bool]:
         async with self.job_queue_lock:
@@ -264,8 +269,15 @@ class KubernetesJobCoordinator(JobCoordinator):
                 job.future.set_result(True)
             else:
                 job.future.set_exception(RuntimeError("Job failed!"))
+            # increment prometheus counter
             succ_str = "success" if success else "failed"
             JobRuns.labels(coordinator_id=self.coordinator_id, image=job.definition.image, success=succ_str).inc()
+            # emit a message
+            await self.__done_event(success, job.definition.id, error_message)
+
+    async def __done_event(self, success: bool, job_id: str, error: Optional[str] = None) -> None:
+        kind = "job-finished" if success else "job-failed"
+        await self.collect_done_publisher.publish(kind, {"job_id": job_id, "error": error})
 
     async def __reconcile(self) -> None:
         res = await self.batch.list_namespaced_job(
@@ -277,6 +289,10 @@ class KubernetesJobCoordinator(JobCoordinator):
             ref = JobReference.from_job(item)
             running_jobs[ref.name] = RunningJob(definition=definition, ref=ref, future=Future())
         async with self.running_jobs_lock:
+            # all jobs not in the running list are done
+            for k, v in self.running_jobs.items():
+                if k not in running_jobs:
+                    await self.__mark_future_done(v)
             self.running_jobs = running_jobs
 
     async def __clean_done_jobs(self) -> None:
@@ -289,6 +305,16 @@ class KubernetesJobCoordinator(JobCoordinator):
             if ref.status.is_done():
                 await self.__delete_job(ref)
                 self.running_jobs.pop(ref.name, None)
+                job_def = JobDefinition.from_job(item)
+                await self.__done_event(ref.status == JobStatus.succeeded, job_def.id)
+
+    async def __watch_jobs_continuously(self) -> None:
+        while True:
+            try:
+                await self.__reconcile()
+                await self.__watch_jobs()
+            except Exception as ex:
+                log.exception(f"Error while watching jobs: {ex}")
 
     async def __watch_jobs(self) -> None:
         watch = Watch()
@@ -298,6 +324,7 @@ class KubernetesJobCoordinator(JobCoordinator):
             label_selector=f"app=collect-coordinator,coordinator-id={self.coordinator_id}",
         ):
             try:
+                log.info(f"Job changed: {event}")
                 change_type = event["type"]  # ADDED, MODIFIED, DELETED
                 job = event["object"]
                 name = job.metadata.name
@@ -336,16 +363,14 @@ class KubernetesJobCoordinator(JobCoordinator):
         await self.batch.delete_namespaced_job(name=ref.name, namespace=self.namespace, propagation_policy="Foreground")
 
     async def start(self) -> Any:
+        await self.collect_done_publisher.start()
         await self.__clean_done_jobs()
         await self.__reconcile()
-        self.watcher = asyncio.create_task(self.__watch_jobs())
+        self.watcher = asyncio.create_task(self.__watch_jobs_continuously())
 
     async def stop(self) -> None:
-        if self.watcher and not self.watcher.done():
-            self.watcher.cancel()
-            with suppress(asyncio.CancelledError):
-                await self.watcher
-            self.watcher = None
+        await stop_running_task(self.watcher)
+        self.watcher = None
         for name, running_job in self.running_jobs.items():
             # The process stops and the job is still running.
             # Choices:
@@ -361,3 +386,4 @@ class KubernetesJobCoordinator(JobCoordinator):
             # For simplicity, we choose c) for now.
             log.info(f"Tear down. Job is still running. Mark job {name} as failed.")
             await self.__mark_future_done(running_job, "Coordinator stopped. Job is still running.")
+        await self.collect_done_publisher.stop()

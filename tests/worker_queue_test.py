@@ -73,6 +73,8 @@ def test_read_job_definition(worker_queue: WorkerQueue, example_definition: Json
         "/etc/ssl/certs/ca.crt",
         "--write",
         ".aws/credentials=AWS_CREDENTIALS",
+        "--account-id",
+        "123456789012",
         "---",
         "--graphdb-bootstrap-do-not-secure",
         "--graphdb-server",
