@@ -90,6 +90,8 @@ def test_read_job_definition(worker_queue: WorkerQueue, example_definition: Json
         "--ca-cert",
         "/etc/ssl/certs/ca.crt",
         "---",
+        "--idle-timeout",
+        "120",
     ]
     assert job_def.env == {
         "AWS_CREDENTIALS": "[default]\n"

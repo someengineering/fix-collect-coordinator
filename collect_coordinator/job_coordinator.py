@@ -21,6 +21,7 @@ import logging
 from abc import abstractmethod, ABC
 from asyncio import Future
 from contextlib import suppress
+from datetime import timedelta
 from enum import Enum
 from typing import Dict, Any, Optional, List, Tuple
 
@@ -65,7 +66,7 @@ JobCollectionTimes = Histogram(
     "coordinator_job_collection_times",
     "Time to collect data",
     ["coordinator_id"],
-    buckets=(15, 30, 60, 90, 120, 180, 240, 300, 420, 600, 900, 1200, utils.INF),
+    buckets=(15, 30, 60, 90, 120, 180, 240, 300, 420, 600, 900, 1200, 2400, 3600, utils.INF),
 )
 
 
@@ -126,6 +127,8 @@ class JobDefinition:
     requires: Optional[ComputeResources] = None
     limits: Optional[ComputeResources] = None
     env: Optional[Dict[str, str]] = None
+    deadline: timedelta = timedelta(minutes=30)  # how long is the job allowed to run
+    retries: int = 3  # in case the process failed, how many retries are allowed
 
     @staticmethod
     def from_job(job: V1Job) -> JobDefinition:
@@ -265,7 +268,8 @@ class KubernetesJobCoordinator(JobCoordinator):
                 annotations={"job-id": definition.id},
             ),
             spec=V1JobSpec(
-                backoff_limit=0,
+                active_deadline_seconds=int(definition.deadline.total_seconds()),
+                backoff_limit=definition.retries,
                 template=pod_template,
                 ttl_seconds_after_finished=600,  # Safeguard. We will delete the job manually.
             ),
