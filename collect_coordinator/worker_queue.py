@@ -34,6 +34,7 @@ from bitmath import MiB, GiB
 from fixcloudutils.asyncio import stop_running_task
 from fixcloudutils.service import Service
 from fixcloudutils.types import Json
+from fixcloudutils.asyncio.timed import timed
 
 from collect_coordinator.job_coordinator import JobDefinition, ComputeResources, JobCoordinator
 
@@ -57,6 +58,7 @@ class WorkerQueue(Service):
         self.versions = versions
         self.redis_event_url = redis_event_url
 
+    @timed(module="collect_coordinator", name="collect")
     async def collect(self, ctx: Dict[Any, Any], *args: Any, **kwargs: Any) -> bool:
         log.debug(f"Collect function called with ctx: {ctx}, args: {args}, kwargs: {kwargs}")
         job_id: str = ctx["job_id"]
@@ -172,7 +174,10 @@ class WorkerQueue(Service):
             "--ca-cert",  # make the ca available to core
             "/etc/ssl/certs/ca.crt",
         ]
-        worker_args: List[str] = []
+        worker_args: List[str] = [
+            "--idle-timeout",
+            "120",  # A collect message should arrive within 2 minutes. If not, fail the process.
+        ]
         worker_config: Json = {}
         collectors: Set[str] = set()
         # make the root password available via env

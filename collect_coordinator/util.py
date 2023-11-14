@@ -52,7 +52,7 @@ def is_file(message: str) -> Callable[[str], Path]:
 
 def setup_process(args: Namespace) -> None:
     level = logging.DEBUG if args.debug else logging.INFO
-    setup_logger("collect.coordinator", level=level)
+    setup_logger("collect_coordinator", level=level)
     logging.getLogger("arq.worker").setLevel(logging.CRITICAL)
 
 
