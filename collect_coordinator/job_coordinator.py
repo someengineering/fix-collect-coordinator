@@ -226,6 +226,10 @@ class KubernetesJobCoordinator(JobCoordinator):
         # uname = definition.name + "-" + definition.id
         env = self.env | (definition.env or {})
         pod_template = V1PodTemplateSpec(
+            metadata=V1ObjectMeta(
+                labels={"app": "collect-job", "coordinator-id": self.coordinator_id},
+                annotations={"job-id": definition.id},
+            ),
             spec=V1PodSpec(
                 restart_policy=definition.restart_policy,
                 containers=[
