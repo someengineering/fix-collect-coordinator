@@ -158,6 +158,8 @@ class WorkerQueue(Service):
             self.redis_event_url,
             "--ca-cert",
             "/etc/ssl/certs/ca.crt",
+            "--push-gateway-url",
+            "http://pushgateway-prometheus-pushgateway.monitoring.svc.cluster.local:9091",
         ]
         core_args = [
             "--graphdb-bootstrap-do-not-secure",  # root password comes via the environment
