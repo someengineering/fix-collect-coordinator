@@ -127,7 +127,7 @@ class JobDefinition:
     requires: Optional[ComputeResources] = None
     limits: Optional[ComputeResources] = None
     env: Optional[Dict[str, str]] = None
-    deadline: timedelta = timedelta(minutes=30)  # how long is the job allowed to run
+    deadline: timedelta = timedelta(hours=1)  # how long is the job allowed to run
     retries: int = 3  # in case the process failed, how many retries are allowed
 
     @staticmethod

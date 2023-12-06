@@ -30,11 +30,11 @@ from typing import Dict, Any, Optional, List, Set
 
 from arq.connections import ArqRedis
 from arq.worker import Worker, Function
-from bitmath import MiB, GiB
+from bitmath import GiB
 from fixcloudutils.asyncio import stop_running_task
+from fixcloudutils.asyncio.timed import timed
 from fixcloudutils.service import Service
 from fixcloudutils.types import Json
-from fixcloudutils.asyncio.timed import timed
 
 from collect_coordinator.job_coordinator import JobDefinition, ComputeResources, JobCoordinator
 
@@ -137,16 +137,9 @@ class WorkerQueue(Service):
         account = js["account"]
         env = js.get("env") or {}  # Optional[Dict[str, str]]
         debug = js.get("debug", False)  # Optional[bool]
-        account_len_hint = js.get("account_len_hint", 1)  # Optional[int]
-        if account_len_hint == 1:
-            requires = ComputeResources(cores=1, memory=MiB(512))
-            limits = ComputeResources(cores=1, memory=GiB(2))
-        elif account_len_hint < 10:
-            requires = ComputeResources(cores=2, memory=GiB(3))
-            limits = ComputeResources(cores=4, memory=GiB(10))
-        else:
-            requires = ComputeResources(cores=4, memory=GiB(5))
-            limits = None
+        # each job run is one account
+        requires = ComputeResources(cores=1, memory=GiB(4))
+        limits = ComputeResources(cores=4, memory=GiB(16))
 
         coordinator_args = [
             "--write",
