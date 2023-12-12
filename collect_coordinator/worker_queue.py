@@ -137,6 +137,7 @@ class WorkerQueue(Service):
         account = js["account"]
         env = js.get("env") or {}  # Optional[Dict[str, str]]
         debug = js.get("debug", False)  # Optional[bool]
+        retry_failed = js.get("retry_failed_for_seconds")  # Optional[float]
         # each job run is one account
         requires = ComputeResources(cores=1, memory=GiB(4))
         limits = ComputeResources(cores=4, memory=GiB(16))
@@ -155,6 +156,8 @@ class WorkerQueue(Service):
             "--push-gateway-url",
             "http://pushgateway-prometheus-pushgateway.monitoring.svc.cluster.local:9091",
         ]
+        if retry_failed:
+            coordinator_args.extend(["--retry-failed-for", str(retry_failed)])
         core_args = [
             "--graphdb-bootstrap-do-not-secure",  # root password comes via the environment
             "--graphdb-server",
