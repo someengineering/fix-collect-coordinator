@@ -338,7 +338,7 @@ class KubernetesJobCoordinator(JobCoordinator):
                 await self.__reconcile()
                 await self.__watch_jobs()
             except ApiException as ex:
-                log.warning(f"Error while watching jobs: status={ex.status}, reason={ex.reason}. Ignore.")
+                log.info(f"Error while watching jobs: status={ex.status}, reason={ex.reason}. Ignore.")
             except Exception as ex:
                 log.exception(f"Error while watching jobs: {ex}")
 
