@@ -16,13 +16,14 @@
 
 import logging
 from argparse import Namespace
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterator
 
 from bitmath import Byte, MiB
 from cattrs import register_structure_hook, register_unstructure_hook
-from fixcloudutils.service import Dependencies
 from fixcloudutils.logging import setup_logger
+from fixcloudutils.service import Dependencies
 
 
 class CollectDependencies(Dependencies):
@@ -37,6 +38,17 @@ class CollectDependencies(Dependencies):
     @property
     def redis_worker_url(self) -> str:
         return f"{self.args.redis_url_nodb}/{self.args.redis_worker_db}"
+
+
+@contextmanager
+def suppress_logging(name: str) -> Iterator[None]:
+    logger = logging.getLogger(name)
+    orig_level = logger.getEffectiveLevel()
+    logger.setLevel(logging.CRITICAL)
+    try:
+        yield None
+    finally:
+        logger.setLevel(orig_level)
 
 
 def is_file(message: str) -> Callable[[str], Path]:
