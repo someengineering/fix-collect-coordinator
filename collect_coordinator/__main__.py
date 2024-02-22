@@ -33,7 +33,7 @@ from redis.asyncio import Redis
 
 from collect_coordinator.api import Api
 from collect_coordinator.job_coordinator import KubernetesJobCoordinator
-from collect_coordinator.util import setup_process, CollectDependencies, is_file
+from collect_coordinator.util import setup_process, CollectDependencies, is_file, suppress_logging
 from collect_coordinator.worker_queue import WorkerQueue
 
 log = logging.getLogger("collect.coordinator")
@@ -57,20 +57,21 @@ def start(args: Namespace) -> None:
 
     async def load_kube_config() -> None:
         loaded = False
-        try:
-            await config.load_kube_config(config_file=args.kube_config)
-            log.info("Loaded kube config from file.")
-            loaded = True
-        except Exception as e:
-            log.info(f"Failed to load kube config: {e}")
-        try:
-            config.incluster_config.load_incluster_config()
-            log.info("Loaded kube config from incluster config.")
-            loaded = True
-        except Exception as e:
-            log.info(f"Failed to load incluster config: {e}")
-        if not loaded:
-            raise RuntimeError("Failed to load kubernetes access configuration.")
+        with suppress_logging("kubernetes_asyncio"):
+            try:
+                await config.load_kube_config(config_file=args.kube_config)
+                log.info("Loaded kube config from file.")
+                loaded = True
+            except Exception as e:
+                log.info(f"Failed to load kube config: {e}")
+            try:
+                config.incluster_config.load_incluster_config()
+                log.info("Loaded kube config from incluster config.")
+                loaded = True
+            except Exception as e:
+                log.info(f"Failed to load incluster config: {e}")
+            if not loaded:
+                raise RuntimeError("Failed to load kubernetes access configuration.")
 
     async def on_start() -> None:
         await load_kube_config()
