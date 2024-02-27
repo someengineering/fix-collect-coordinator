@@ -41,7 +41,7 @@ async def test_enqueue_job(arq_redis: ArqRedis) -> None:
         tenant_id="test",
         graphdb_server="http://db-0.dbs.fix.svc.cluster.local:8529",
         graphdb_database="db3",
-        graphdb_username="resoto",
+        graphdb_username="fix",
         graphdb_password="",
         account=dict(
             kind="aws_account_information",

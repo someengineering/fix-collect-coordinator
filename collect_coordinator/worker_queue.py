@@ -144,7 +144,7 @@ class WorkerQueue(Service):
 
         coordinator_args = [
             "--write",
-            "resoto.worker.yaml=WORKER_CONFIG",
+            "fix.worker.yaml=WORKER_CONFIG",
             "--job-id",
             job_id,
             "--tenant-id",
@@ -169,7 +169,7 @@ class WorkerQueue(Service):
             "--graphdb-password",
             graphdb_password,
             "--override-path",
-            "/home/resoto/resoto.worker.yaml",
+            "/home/fix/fix.worker.yaml",
             "--ca-cert",  # make the ca available to core
             "/etc/ssl/certs/ca.crt",
         ]
@@ -181,7 +181,7 @@ class WorkerQueue(Service):
         collectors: Set[str] = set()
         # make the root password available via env
         if graph_db_root_password := self.credentials.get("graph_db_root_password"):
-            env["RESOTOCORE_GRAPHDB_ROOT_PASSWORD"] = graph_db_root_password
+            env["FIXCORE_GRAPHDB_ROOT_PASSWORD"] = graph_db_root_password
         if redis_password := self.credentials.get("redis_password"):
             env["REDIS_PASSWORD"] = redis_password
         if debug:
@@ -216,7 +216,7 @@ class WorkerQueue(Service):
         else:
             raise ValueError("Don't know how to collect account kind: {account['kind']}")
 
-        worker_config["resotoworker"] = {"collector": list(collectors)}
+        worker_config["fixworker"] = {"collector": list(collectors)}
         env["WORKER_CONFIG"] = json.dumps(worker_config)
         return JobDefinition(
             id=job_id,

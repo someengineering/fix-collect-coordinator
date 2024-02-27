@@ -62,7 +62,7 @@ def test_read_job_definition(worker_queue: WorkerQueue, example_definition: Json
     assert job_def.image == "someengineering/fix-collect-single:0.0.1"
     assert job_def.args == [
         "--write",
-        "resoto.worker.yaml=WORKER_CONFIG",
+        "fix.worker.yaml=WORKER_CONFIG",
         "--job-id",
         "uid",
         "--tenant-id",
@@ -88,7 +88,7 @@ def test_read_job_definition(worker_queue: WorkerQueue, example_definition: Json
         "--graphdb-password",
         "e",
         "--override-path",
-        "/home/resoto/resoto.worker.yaml",
+        "/home/fix/fix.worker.yaml",
         "--ca-cert",
         "/etc/ssl/certs/ca.crt",
         "---",
@@ -106,10 +106,10 @@ def test_read_job_definition(worker_queue: WorkerQueue, example_definition: Json
         "WORKER_CONFIG": '{"aws": {"account": '
         '["123456789012"], "profiles": ["test"], '
         '"prefer_profile_as_account_name": true}, '
-        '"resotoworker": {"collector": ["aws"]}}',
+        '"fixworker": {"collector": ["aws"]}}',
         "test": "test",
         "REDIS_PASSWORD": "test",
-        "RESOTOCORE_GRAPHDB_ROOT_PASSWORD": "test",
+        "FIXCORE_GRAPHDB_ROOT_PASSWORD": "test",
     }
 
 
