@@ -169,7 +169,7 @@ class WorkerQueue(Service):
             "--graphdb-password",
             graphdb_password,
             "--override-path",
-            "/home/fix/fix.worker.yaml",
+            "/home/fixinventory/fix.worker.yaml",
             "--ca-cert",  # make the ca available to core
             "/etc/ssl/certs/ca.crt",
         ]

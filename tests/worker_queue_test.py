@@ -88,7 +88,7 @@ def test_read_job_definition(worker_queue: WorkerQueue, example_definition: Json
         "--graphdb-password",
         "e",
         "--override-path",
-        "/home/fix/fix.worker.yaml",
+        "/home/fixinventory/fix.worker.yaml",
         "--ca-cert",
         "/etc/ssl/certs/ca.crt",
         "---",
