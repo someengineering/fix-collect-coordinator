@@ -114,7 +114,7 @@ def start(args: Namespace) -> None:
                 redis_event_url=deps.redis_event_url,
             ),
         )
-        deps.add("api", Api(app, coordinator))
+        deps.add("api", Api(app, coordinator, redis, api_client))
         await deps.start()
 
     async def on_stop() -> None:
