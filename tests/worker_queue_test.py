@@ -28,6 +28,7 @@ import asyncio
 import os
 
 import pytest
+from arq.connections import ArqRedis
 from fixcloudutils.types import Json
 from pytest import fixture
 
@@ -116,13 +117,13 @@ def test_read_job_definition(worker_queue: WorkerQueue, example_definition: Json
 @pytest.mark.asyncio
 @pytest.mark.skipif(os.environ.get("REDIS_RUNNING", "false") != "true", reason="Redis not running")
 async def test_enqueue_jobs(
-    worker_queue: WorkerQueue, coordinator: LazyJobCoordinator, example_definition: Json
+    arq_redis: ArqRedis, worker_queue: WorkerQueue, coordinator: LazyJobCoordinator, example_definition: Json
 ) -> None:
     async with worker_queue:
-        await worker_queue.redis.enqueue_job("collect", example_definition)
-        await worker_queue.redis.enqueue_job("collect", example_definition)
-        await worker_queue.redis.enqueue_job("collect", example_definition)
-        ping = await worker_queue.redis.enqueue_job("ping")
+        await arq_redis.enqueue_job("collect", example_definition)
+        await arq_redis.enqueue_job("collect", example_definition)
+        await arq_redis.enqueue_job("collect", example_definition)
+        ping = await arq_redis.enqueue_job("ping")
         assert ping is not None
 
         async def assert_job_in_queue() -> None:

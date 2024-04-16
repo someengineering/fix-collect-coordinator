@@ -25,7 +25,6 @@ from datetime import timedelta
 from enum import Enum
 from typing import Dict, Any, Optional, List, Tuple
 
-from arq.connections import ArqRedis
 from attr import evolve
 from attrs import define
 from bitmath import Byte
@@ -166,14 +165,12 @@ class KubernetesJobCoordinator(JobCoordinator):
         self,
         coordinator_id: str,
         redis: Redis,
-        arq_redis: ArqRedis,
         api_client: ApiClient,
         namespace: str,
         max_parallel: int,
         env: Dict[str, str],
     ) -> None:
         self.coordinator_id = coordinator_id
-        self.arq_redis = arq_redis
         self.api_client = api_client
         self.batch = k8s.BatchV1Api(api_client)
         self.namespace = namespace

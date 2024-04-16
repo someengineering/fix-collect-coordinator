@@ -25,7 +25,6 @@ from typing import AsyncIterator, TypeVar
 
 from aiohttp import web
 from aiohttp.web_app import Application
-from arq import create_pool
 from arq.connections import RedisSettings
 from kubernetes_asyncio import config
 from kubernetes_asyncio.client import ApiClient
@@ -79,10 +78,18 @@ def start(args: Namespace) -> None:
         arq_redis_settings = replace(
             RedisSettings.from_dsn(deps.redis_worker_url), password=args.redis_password, **redis_args
         )
-        arq_redis = deps.add("arq_redis", await create_pool(arq_redis_settings))
         redis = deps.add(
             "redis",
-            Redis.from_url(deps.redis_event_url, decode_responses=True, password=args.redis_password, **redis_args),
+            Redis.from_url(
+                deps.redis_event_url,
+                decode_responses=True,
+                password=args.redis_password,
+                socket_keepalive=True,
+                health_check_interval=30,
+                socket_timeout=10,
+                socket_connect_timeout=10,
+                **redis_args,
+            ),
         )
 
         api_client = deps.add("api_client", ApiClient(pool_threads=10))
@@ -91,7 +98,6 @@ def start(args: Namespace) -> None:
             KubernetesJobCoordinator(
                 coordinator_id=hostname,
                 redis=redis,
-                arq_redis=arq_redis,
                 api_client=api_client,
                 namespace=args.namespace,
                 max_parallel=args.max_parallel_jobs,
@@ -101,7 +107,7 @@ def start(args: Namespace) -> None:
         deps.add(
             "worker_queue",
             WorkerQueue(
-                redis=arq_redis,
+                redis_settings=arq_redis_settings,
                 coordinator=coordinator,
                 credentials=credentials,
                 versions=versions,
