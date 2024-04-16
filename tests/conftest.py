@@ -50,10 +50,9 @@ class LazyJobCoordinator(JobCoordinator):
 
 @fixture
 async def arq_redis() -> AsyncIterator[ArqRedis]:
-    pool = await create_pool(RedisSettings(host="localhost", port=6379, database=5))
-    await pool.flushdb()
-    yield pool
-    await pool.aclose()
+    async with await create_pool(RedisSettings(host="localhost", port=6379, database=5)) as pool:
+        await pool.flushdb()
+        yield pool
 
 
 @fixture
@@ -80,9 +79,14 @@ def coordinator() -> LazyJobCoordinator:
 
 @fixture
 async def worker_queue(
-    arq_redis: ArqRedis,
     coordinator: LazyJobCoordinator,
     credentials: Dict[str, Dict[str, str]],
     versions: Dict[str, str],
 ) -> WorkerQueue:
-    return WorkerQueue(arq_redis, coordinator, credentials, versions, "redis://localhost:6379/0")
+    return WorkerQueue(
+        RedisSettings(host="localhost", port=6379, database=5),
+        coordinator,
+        credentials,
+        versions,
+        "redis://localhost:6379/0",
+    )
