@@ -11,14 +11,6 @@
 #
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-#
-#  This program is distributed in the hope that it will be useful,
-#  but WITHOUT ANY WARRANTY; without even the implied warranty of
-#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#  GNU Affero General Public License for more details.
-#
-#  You should have received a copy of the GNU Affero General Public License
-#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
@@ -57,6 +49,7 @@ class WorkerQueue(Service):
         self.credentials = credentials
         self.versions = versions
         self.redis_event_url = redis_event_url
+        self.should_run = False
 
     @timed(module="collect_coordinator", name="collect")
     async def collect(self, ctx: Dict[Any, Any], *args: Any, **kwargs: Any) -> bool:
@@ -85,38 +78,50 @@ class WorkerQueue(Service):
         log.info(f"Got Ping request with following context: {ctx}, args: {args}, kwargs: {kwargs}")
         return "pong"
 
+    async def _run_worker(self) -> Any:
+        while self.should_run:
+            try:
+                worker = Worker(
+                    functions=[
+                        Function(
+                            name="ping",
+                            coroutine=self.ping,
+                            timeout_s=3,
+                            keep_result_s=180,
+                            keep_result_forever=False,
+                            max_tries=1,
+                        ),
+                        Function(
+                            name="collect",
+                            coroutine=self.collect,
+                            timeout_s=3600,
+                            keep_result_s=180,
+                            keep_result_forever=False,
+                            max_tries=1,
+                        ),
+                    ],
+                    job_timeout=3600,  # 1 hour
+                    health_check_interval=60,  # every minute
+                    redis_pool=self.redis,
+                    max_jobs=self.coordinator.max_parallel,
+                    keep_result=180,
+                    retry_jobs=False,
+                    handle_signals=False,
+                    log_results=False,
+                )
+                self.worker = worker
+                await worker.async_run()
+            except Exception:
+                log.exception("Worker failed. Retry.", exc_info=True)
+                await asyncio.sleep(1)
+
     async def start(self) -> Any:
-        worker = Worker(
-            functions=[
-                Function(
-                    name="ping",
-                    coroutine=self.ping,
-                    timeout_s=3,
-                    keep_result_s=180,
-                    keep_result_forever=False,
-                    max_tries=1,
-                ),
-                Function(
-                    name="collect",
-                    coroutine=self.collect,
-                    timeout_s=3600,
-                    keep_result_s=180,
-                    keep_result_forever=False,
-                    max_tries=1,
-                ),
-            ],
-            job_timeout=3600,  # 1 hour
-            redis_pool=self.redis,
-            max_jobs=self.coordinator.max_parallel,
-            keep_result=180,
-            retry_jobs=False,
-            handle_signals=False,
-            log_results=False,
-        )
-        self.worker = worker
-        self.redis_worker_task = asyncio.create_task(worker.async_run())
+        if not self.should_run:
+            self.should_run = True
+            self.redis_worker_task = asyncio.create_task(self._run_worker())
 
     async def stop(self) -> Any:
+        self.should_run = False
         if self.worker:
             # worker close stops with errors
             for task in self.worker.tasks.values():
