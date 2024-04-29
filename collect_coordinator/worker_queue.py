@@ -14,18 +14,17 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import uuid
-from contextlib import suppress
-from typing import Dict, Any, Optional, List, Set
+from typing import Dict, Any, List, Set
 
-from arq.connections import RedisSettings, create_pool
-from arq.worker import Worker, Function
+from arq.connections import RedisSettings
+from arq.constants import default_queue_name
+from arq.worker import func
 from bitmath import GiB
-from fixcloudutils.asyncio import stop_running_task
 from fixcloudutils.asyncio.timed import timed
+from fixcloudutils.redis.worker_queue import WorkerInstance
 from fixcloudutils.service import Service
 from fixcloudutils.types import Json
 
@@ -45,11 +44,18 @@ class WorkerQueue(Service):
     ) -> None:
         self.redis_settings = redis_settings
         self.coordinator = coordinator
-        self.redis_worker_task: Optional[asyncio.Task[Any]] = None
         self.credentials = credentials
         self.versions = versions
         self.redis_event_url = redis_event_url
-        self.should_run = False
+        self.worker_instance = WorkerInstance(
+            redis_settings,
+            default_queue_name,  # TODO: change to a defined name
+            functions=[
+                func(coroutine=self.ping, name="ping", timeout=3, max_tries=1),
+                func(coroutine=self.collect, name="collect", timeout=3600, max_tries=1),
+            ],
+            max_jobs=self.coordinator.max_parallel,
+        )
 
     @timed(module="collect_coordinator", name="collect")
     async def collect(self, ctx: Dict[Any, Any], *args: Any, **kwargs: Any) -> bool:
@@ -78,57 +84,11 @@ class WorkerQueue(Service):
         log.info(f"Got Ping request with following context: {ctx}, args: {args}, kwargs: {kwargs}")
         return "pong"
 
-    async def _run_worker(self) -> Any:
-        while self.should_run:
-            cleanup: Optional[Worker] = None
-            try:
-                async with await create_pool(self.redis_settings) as pool:
-                    worker = Worker(
-                        functions=[
-                            Function(
-                                name="ping",
-                                coroutine=self.ping,
-                                timeout_s=3,
-                                keep_result_s=180,
-                                keep_result_forever=False,
-                                max_tries=1,
-                            ),
-                            Function(
-                                name="collect",
-                                coroutine=self.collect,
-                                timeout_s=3600,
-                                keep_result_s=180,
-                                keep_result_forever=False,
-                                max_tries=1,
-                            ),
-                        ],
-                        job_timeout=3600,  # 1 hour
-                        health_check_interval=60,  # every minute
-                        redis_pool=pool,
-                        max_jobs=self.coordinator.max_parallel,
-                        keep_result=180,
-                        retry_jobs=False,
-                        handle_signals=False,
-                        log_results=False,
-                    )
-                    cleanup = worker
-                    await worker.async_run()
-            except Exception:
-                log.exception("Worker failed. Retry.", exc_info=True)
-                await asyncio.sleep(1)
-            finally:
-                if cleanup:
-                    with suppress(BaseException):
-                        await cleanup.close()
-
     async def start(self) -> Any:
-        if not self.should_run:
-            self.should_run = True
-            self.redis_worker_task = asyncio.create_task(self._run_worker())
+        await self.worker_instance.start()
 
     async def stop(self) -> Any:
-        self.should_run = False
-        await stop_running_task(self.redis_worker_task)
+        await self.worker_instance.stop()
 
     def parse_collect_definition_json(self, js: Json) -> JobDefinition:
         job_id = js["job_id"]  # str
