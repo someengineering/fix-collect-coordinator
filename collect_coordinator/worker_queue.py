@@ -32,6 +32,9 @@ from collect_coordinator.job_coordinator import JobDefinition, ComputeResources,
 
 log = logging.getLogger("collect.coordinator")
 
+# Home directory in the fix docker image
+ImageHome = "/home/fixinventory"
+
 
 class WorkerQueue(Service):
     def __init__(
@@ -98,50 +101,44 @@ class WorkerQueue(Service):
         graphdb_username = js["graphdb_username"]  # str
         graphdb_password = js["graphdb_password"]  # str
         account = js["account"]
-        env = js.get("env") or {}  # Optional[Dict[str, str]]
         debug = js.get("debug", False)  # Optional[bool]
         retry_failed = js.get("retry_failed_for_seconds")  # Optional[float]
         # each job run is one account
         requires = ComputeResources(cores=1, memory=GiB(4))
         limits = ComputeResources(cores=4, memory=GiB(16))
 
+        # environment variables to pass to process
+        env = js.get("env") or {}  # Optional[Dict[str, str]]
+        # this defined the worker override configuration
+        worker_config: Json = {}
+        # the set of collectors to run
+        collectors: Set[str] = set()
+        # all coordinator arguments
         coordinator_args = [
-            "--write",
-            "fix.worker.yaml=WORKER_CONFIG",
-            "--job-id",
-            job_id,
-            "--tenant-id",
-            tenant_id,
-            "--redis-url",
-            self.redis_event_url,
-            "--ca-cert",
-            "/etc/ssl/certs/ca.crt",
-            "--push-gateway-url",
-            "http://pushgateway-prometheus-pushgateway.monitoring.svc.cluster.local:9091",
+            "--write", "fix.worker.yaml=WORKER_CONFIG",  # fmt: skip
+            "--job-id", job_id,  # fmt: skip
+            "--tenant-id", tenant_id,  # fmt: skip
+            "--redis-url", self.redis_event_url,  # fmt: skip
+            "--ca-cert", "/etc/ssl/certs/ca.crt",  # fmt: skip
+            "--push-gateway-url", "http://pushgateway-prometheus-pushgateway.monitoring.svc.cluster.local:9091",  # fmt: skip # noqa: E501
         ]
         if retry_failed:
             coordinator_args.extend(["--retry-failed-for", str(retry_failed)])
+        # all fixcore arguments
         core_args = [
             "--graphdb-bootstrap-do-not-secure",  # root password comes via the environment
-            "--graphdb-server",
-            graphdb_server,
-            "--graphdb-database",
-            graphdb_database,
-            "--graphdb-username",
-            graphdb_username,
-            "--graphdb-password",
-            graphdb_password,
-            "--override-path",
-            "/home/fixinventory/fix.worker.yaml",
-            "--ca-cert",  # make the ca available to core
-            "/etc/ssl/certs/ca.crt",
+            "--graphdb-server", graphdb_server,  # fmt: skip
+            "--graphdb-database", graphdb_database,  # fmt: skip
+            "--graphdb-username", graphdb_username,  # fmt: skip
+            "--graphdb-password", graphdb_password,  # fmt: skip
+            "--override-path", f"{ImageHome}/fix.worker.yaml",  # fmt: skip
+            "--ca-cert",  "/etc/ssl/certs/ca.crt",  # fmt: skip
         ]
+        # all fixworker arguments
         worker_args: List[str] = [
-            "--idle-timeout",
-            "120",  # A collect message should arrive within 2 minutes. If not, fail the process.
+            # A collect message should arrive within 2 minutes. If not, fail the process.
+            "--idle-timeout", "120",  # fmt: skip
         ]
-        worker_config: Json = {}
-        collectors: Set[str] = set()
         # make the root password available via env
         if graph_db_root_password := self.credentials.get("graph_db_root_password"):
             env["FIXCORE_GRAPHDB_ROOT_PASSWORD"] = graph_db_root_password
@@ -151,31 +148,79 @@ class WorkerQueue(Service):
             worker_args.append("--verbose")
             # core_args.append("--debug")
 
+        def handle_azure_subscription() -> None:
+            az_subscription_id = account["azure_subscription_id"]
+            az_tenant_id = account["tenant_id"]
+            az_client_id = account["client_id"]
+            az_client_secret = account["client_secret"]
+            coordinator_args.extend([
+                "--cloud", "azure",  # fmt: skip
+                "--account-id", az_subscription_id,  # fmt: skip
+            ])
+            collectors.add("azure")
+            worker_config["azure"] = {
+                "accounts": {
+                    "default": {
+                        "subscriptions": [az_subscription_id],
+                        "client_secret": {
+                            "tenant_id": az_tenant_id,
+                            "client_id": az_client_id,
+                            "client_secret": az_client_secret,
+                        },
+                    }
+                },
+            }
+
+        def handle_gcp_project() -> None:
+            gcp_project_id = account["gcp_project_id"]
+            gcp_credentials = account["google_application_credentials"]
+            env["GCP_CREDENTIALS"] = gcp_credentials
+            filename = f"{ImageHome}/.gcp/credentials"
+            coordinator_args.extend(
+                [
+                    "--write", f"{filename}=GCP_CREDENTIALS",  # fmt: skip
+                    "--cloud", "azure",  # fmt: skip
+                    "--account-id", gcp_project_id,  # fmt: skip
+                ]
+            )
+            collectors.add("gcp")
+            worker_config["gcp"] = {"service_account": [filename], "project": [gcp_project_id]}
+
         def handle_aws_account() -> None:
-            account_id = account["aws_account_id"]
-            account_name = account.get("aws_account_name")  # optional
-            role_arn = account["aws_role_arn"]
-            external_id = account["external_id"]
-            profile = account_name or account_id
+            aws_account_id = account["aws_account_id"]
+            aws_account_name = account.get("aws_account_name")  # optional
+            aws_role_arn = account["aws_role_arn"]
+            aws_external_id = account["external_id"]
+            aws_profile = aws_account_name or aws_account_id
             env["AWS_CREDENTIALS"] = (
                 "[default]\n"
                 f"aws_access_key_id = {self.credentials['aws']['aws_access_key_id']}\n"
                 f"aws_secret_access_key = {self.credentials['aws']['aws_secret_access_key']}\n\n"
-                f"[{profile}]\n"
-                f"role_arn = {role_arn}\n"
+                f"[{aws_profile}]\n"
+                f"role_arn = {aws_role_arn}\n"
                 "source_profile = default\n"
-                f"external_id = {external_id}\n"
+                f"external_id = {aws_external_id}\n"
             )
-            coordinator_args.extend(["--write", ".aws/credentials=AWS_CREDENTIALS", "--account-id", account_id])
+            coordinator_args.extend(
+                [
+                    "--write", ".aws/credentials=AWS_CREDENTIALS",  # fmt: skip
+                    "--cloud", "azure",  # fmt: skip
+                    "--account-id", aws_account_id,  # fmt: skip
+                ]
+            )
             collectors.add("aws")
             worker_config["aws"] = {
-                "account": [account_id],
-                "profiles": [profile],
-                "prefer_profile_as_account_name": account_name is not None,
+                "account": [aws_account_id],
+                "profiles": [aws_profile],
+                "prefer_profile_as_account_name": aws_account_name is not None,
             }
 
         if account["kind"] == "aws_account_information":
             handle_aws_account()
+        elif account["kind"] == "gcp_project_information":
+            handle_gcp_project()
+        elif account["kind"] == "azure_subscription_information":
+            handle_azure_subscription()
         else:
             raise ValueError("Don't know how to collect account kind: {account['kind']}")
 
