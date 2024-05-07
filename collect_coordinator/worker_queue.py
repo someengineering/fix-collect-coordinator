@@ -115,29 +115,42 @@ class WorkerQueue(Service):
         collectors: Set[str] = set()
         # all coordinator arguments
         coordinator_args = [
-            "--write", "fix.worker.yaml=WORKER_CONFIG",  # fmt: skip
-            "--job-id", job_id,  # fmt: skip
-            "--tenant-id", tenant_id,  # fmt: skip
-            "--redis-url", self.redis_event_url,  # fmt: skip
-            "--ca-cert", "/etc/ssl/certs/ca.crt",  # fmt: skip
-            "--push-gateway-url", "http://pushgateway-prometheus-pushgateway.monitoring.svc.cluster.local:9091",  # fmt: skip # noqa: E501
+            "--write",
+            "fix.worker.yaml=WORKER_CONFIG",
+            "--job-id",
+            job_id,
+            "--tenant-id",
+            tenant_id,
+            "--redis-url",
+            self.redis_event_url,
+            "--ca-cert",
+            "/etc/ssl/certs/ca.crt",
+            "--push-gateway-url",
+            "http://pushgateway-prometheus-pushgateway.monitoring.svc.cluster.local:9091",
         ]
         if retry_failed:
             coordinator_args.extend(["--retry-failed-for", str(retry_failed)])
         # all fixcore arguments
         core_args = [
-            "--graphdb-bootstrap-do-not-secure",  # root password comes via the environment
-            "--graphdb-server", graphdb_server,  # fmt: skip
-            "--graphdb-database", graphdb_database,  # fmt: skip
-            "--graphdb-username", graphdb_username,  # fmt: skip
-            "--graphdb-password", graphdb_password,  # fmt: skip
-            "--override-path", f"{ImageHome}/fix.worker.yaml",  # fmt: skip
-            "--ca-cert",  "/etc/ssl/certs/ca.crt",  # fmt: skip
+            "--graphdb-bootstrap-do-not-secure",
+            "--graphdb-server",
+            graphdb_server,
+            "--graphdb-database",
+            graphdb_database,
+            "--graphdb-username",
+            graphdb_username,
+            "--graphdb-password",
+            graphdb_password,
+            "--override-path",
+            f"{ImageHome}/fix.worker.yaml",
+            "--ca-cert",
+            "/etc/ssl/certs/ca.crt",
         ]
         # all fixworker arguments
         worker_args: List[str] = [
             # A collect message should arrive within 2 minutes. If not, fail the process.
-            "--idle-timeout", "120",  # fmt: skip
+            "--idle-timeout",
+            "120",
         ]
         # make the root password available via env
         if graph_db_root_password := self.credentials.get("graph_db_root_password"):
@@ -153,10 +166,14 @@ class WorkerQueue(Service):
             az_tenant_id = account["tenant_id"]
             az_client_id = account["client_id"]
             az_client_secret = account["client_secret"]
-            coordinator_args.extend([
-                "--cloud", "azure",  # fmt: skip
-                "--account-id", az_subscription_id,  # fmt: skip
-            ])
+            coordinator_args.extend(
+                [
+                    "--cloud",
+                    "azure",
+                    "--account-id",
+                    az_subscription_id,
+                ]
+            )
             collectors.add("azure")
             worker_config["azure"] = {
                 "accounts": {
@@ -178,9 +195,12 @@ class WorkerQueue(Service):
             filename = f"{ImageHome}/.gcp/credentials"
             coordinator_args.extend(
                 [
-                    "--write", f"{filename}=GCP_CREDENTIALS",  # fmt: skip
-                    "--cloud", "azure",  # fmt: skip
-                    "--account-id", gcp_project_id,  # fmt: skip
+                    "--write",
+                    f"{filename}=GCP_CREDENTIALS",
+                    "--cloud",
+                    "gcp",
+                    "--account-id",
+                    gcp_project_id,
                 ]
             )
             collectors.add("gcp")
@@ -203,9 +223,12 @@ class WorkerQueue(Service):
             )
             coordinator_args.extend(
                 [
-                    "--write", ".aws/credentials=AWS_CREDENTIALS",  # fmt: skip
-                    "--cloud", "azure",  # fmt: skip
-                    "--account-id", aws_account_id,  # fmt: skip
+                    "--write",
+                    ".aws/credentials=AWS_CREDENTIALS",
+                    "--cloud",
+                    "aws",
+                    "--account-id",
+                    aws_account_id,
                 ]
             )
             collectors.add("aws")
