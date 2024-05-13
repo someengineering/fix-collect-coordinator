@@ -76,6 +76,8 @@ def test_read_job_definition(worker_queue: WorkerQueue, example_definition: Json
         "http://pushgateway-prometheus-pushgateway.monitoring.svc.cluster.local:9091",
         "--write",
         ".aws/credentials=AWS_CREDENTIALS",
+        "--cloud",
+        "aws",
         "--account-id",
         "123456789012",
         "---",
