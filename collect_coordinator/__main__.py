@@ -147,7 +147,12 @@ def start(args: Namespace) -> None:
 def main() -> None:
     ap = ArgumentParser()
     ap.add_argument("--namespace", help="The namespace to start the jobs in.", required=True)
-    ap.add_argument("--debug", action="store_true", help="Enable debug logging")
+    ap.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug logging",
+        default=os.environ.get("COORDINATOR_DEBUG", "").lower() == "true",
+    )
     ap.add_argument("--kube-config", help="Optional path to kube config file.")
     ap.add_argument(
         "--redis-url-nodb", help="Redis host. Default: redis://localhost:6379", default="redis://localhost:6379"
