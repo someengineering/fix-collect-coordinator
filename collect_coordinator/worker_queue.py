@@ -193,9 +193,9 @@ class WorkerQueue(Service):
             }
 
         def handle_gcp_project() -> None:
-            gcp_project_id = account["gcp_project_id"]
-            gcp_credentials = account["google_application_credentials"]
-            env["GCP_CREDENTIALS"] = gcp_credentials
+            gcp_project_id: str = account["gcp_project_id"]
+            gcp_credentials: Json = account["google_application_credentials"]
+            env["GCP_CREDENTIALS"] = json.dumps(gcp_credentials)
             filename = f"{ImageHome}/.gcp/credentials"
             coordinator_args.extend(
                 [
