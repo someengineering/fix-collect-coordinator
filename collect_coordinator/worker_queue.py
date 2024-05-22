@@ -62,7 +62,8 @@ class WorkerQueue(Service):
 
     @timed(module="collect_coordinator", name="collect")
     async def collect(self, ctx: Dict[Any, Any], *args: Any, **kwargs: Any) -> bool:
-        log.debug(f"Collect function called with ctx: {ctx}, args: {args}, kwargs: {kwargs}")
+        # TODO: switch to debug here
+        log.info(f"Collect function called with ctx: {ctx}, args: {args}, kwargs: {kwargs}")
         job_id: str = ctx["job_id"]
         if len(args) == 1 and isinstance(args[0], dict):
             data = args[0]
@@ -74,10 +75,14 @@ class WorkerQueue(Service):
                 message = f"Failed to parse collect definition json: {e}"
                 log.error(message, exc_info=True)
                 raise ValueError(message) from e
-            log.info(f"Received collect job {jd.name}")
-            future = await self.coordinator.start_job(jd)
-            log.info(f"Collect job {jd.name} started. Wait for the job to finish.")
-            return await future
+            try:
+                log.info(f"Received collect job {jd.name}")
+                future = await self.coordinator.start_job(jd)
+                log.info(f"Collect job {jd.name} started. Wait for the job to finish.")
+                return await future
+            except Exception as e:
+                log.warning(f"Collect job {jd.name} failed: {e}", exc_info=True)
+                raise
         else:
             message = f"Invalid arguments for collect function. Got {args}. Expect one arg of type Json."
             log.error(message)
