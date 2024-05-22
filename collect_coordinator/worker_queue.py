@@ -62,8 +62,7 @@ class WorkerQueue(Service):
 
     @timed(module="collect_coordinator", name="collect")
     async def collect(self, ctx: Dict[Any, Any], *args: Any, **kwargs: Any) -> bool:
-        # TODO: switch to debug here
-        log.info(f"Collect function called with ctx: {ctx}, args: {args}, kwargs: {kwargs}")
+        log.debug(f"Collect function called with ctx: {ctx}, args: {args}, kwargs: {kwargs}")
         job_id: str = ctx["job_id"]
         if len(args) == 1 and isinstance(args[0], dict):
             data = args[0]
@@ -194,9 +193,9 @@ class WorkerQueue(Service):
             }
 
         def handle_gcp_project() -> None:
-            gcp_project_id = account["gcp_project_id"]
-            gcp_credentials = account["google_application_credentials"]
-            env["GCP_CREDENTIALS"] = gcp_credentials
+            gcp_project_id: str = account["gcp_project_id"]
+            gcp_credentials: Json = account["google_application_credentials"]
+            env["GCP_CREDENTIALS"] = json.dumps(gcp_credentials)
             filename = f"{ImageHome}/.gcp/credentials"
             coordinator_args.extend(
                 [
