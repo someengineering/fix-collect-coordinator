@@ -118,20 +118,22 @@ class JobReference:
 
 @define(eq=True, order=True, repr=True, frozen=True)
 class JobDefinition:
-    id: str
-    name: str
-    image: str
-    args: List[str]
-    restart_policy: str = "Never"
-    requires: Optional[ComputeResources] = None
-    limits: Optional[ComputeResources] = None
-    env: Optional[Dict[str, str]] = None
+    app: str  # name of the pod spec - should be the same for the same kind of job
+    id: str  # unique identifier of this job run
+    name: str  # unique name of the pod
+    image: str  # the image to use
+    args: List[str]  # the args to pass to the image
+    restart_policy: str = "Never"  # what to do if the pod fails
+    requires: Optional[ComputeResources] = None  # what resources are required
+    limits: Optional[ComputeResources] = None  # what resources are allowed
+    env: Optional[Dict[str, str]] = None  # additional environment variables
     deadline: timedelta = timedelta(hours=3)  # how long is the job allowed to run
     retries: int = 3  # in case the process failed, how many retries are allowed
 
     @staticmethod
     def from_job(job: V1Job) -> JobDefinition:
         return JobDefinition(
+            app=job.metadata.labels.get("app", "collect"),
             id=job.metadata.annotations.get("job-id", "n/a"),
             name=job.metadata.name,
             image=job.spec.template.spec.containers[0].image,
@@ -224,7 +226,7 @@ class KubernetesJobCoordinator(JobCoordinator):
         env = self.env | (definition.env or {})
         pod_template = V1PodTemplateSpec(
             metadata=V1ObjectMeta(
-                labels={"app": "collect-job", "coordinator-id": self.coordinator_id},
+                labels={"app": definition.app, "coordinator-id": self.coordinator_id},
                 annotations={"job-id": definition.id},
             ),
             spec=V1PodSpec(

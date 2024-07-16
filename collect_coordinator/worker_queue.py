@@ -255,6 +255,7 @@ class WorkerQueue(Service):
         worker_config["fixworker"] = {"collector": list(collectors)}
         env["WORKER_CONFIG"] = json.dumps(worker_config)
         return JobDefinition(
+            app="collect-job",
             id=job_id,
             name="collect-" + str(uuid.uuid1()),
             image="someengineering/fix-collect-single:" + self.versions.get("fix_collect_single", "edge"),
@@ -291,6 +292,7 @@ class WorkerQueue(Service):
 
         # each job run is for one tenant and all collected accounts
         return JobDefinition(
+            app="post-collect-job",
             id=job_id,
             name="post-collect-" + str(uuid.uuid1()),
             image="someengineering/fix-collect-single:" + self.versions.get("fix_collect_single", "edge"),
