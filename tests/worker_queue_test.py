@@ -37,7 +37,7 @@ from tests.conftest import LazyJobCoordinator, worker_queue
 
 
 @fixture
-def example_definition() -> Json:
+def example_collect_definition() -> Json:
     return {
         "job_id": "uid",
         "tenant_id": "a",
@@ -56,48 +56,53 @@ def example_definition() -> Json:
     }
 
 
+@fixture
+def example_post_collect_definition() -> Json:
+    return {
+        "job_id": "uid",
+        "tenant_id": "a",
+        "graphdb_server": "b",
+        "graphdb_database": "c",
+        "graphdb_username": "d",
+        "graphdb_password": "e",
+        "accounts_collected": [
+            {"cloud": "aws", "account_id": "aws_123456789012", "task_id": "t1-987654321"},
+            {"cloud": "gcp", "account_id": "gcp_123456789012", "task_id": "t2-987654321"},
+            {"cloud": "azure", "account_id": "ms_123456789012", "task_id": "t3-987654321"},
+        ],
+        "env": {"test": "test"},
+    }
+
+
 @pytest.mark.skipif(os.environ.get("REDIS_RUNNING", "false") != "true", reason="Redis not running")
-def test_read_job_definition(worker_queue: WorkerQueue, example_definition: Json) -> None:
-    job_def = worker_queue.parse_collect_definition_json(example_definition)
+def test_read_job_definition(worker_queue: WorkerQueue, example_collect_definition: Json) -> None:
+    job_def = worker_queue.parse_collect_definition_json(example_collect_definition)
     assert job_def.name.startswith("collect")
     assert job_def.image == "someengineering/fix-collect-single:0.0.1"
+    # fmt: off
     assert job_def.args == [
-        "--write",
-        "fix.worker.yaml=WORKER_CONFIG",
-        "--job-id",
-        "uid",
-        "--tenant-id",
-        "a",
-        "--redis-url",
-        "redis://localhost:6379/0",
-        "--ca-cert",
-        "/etc/ssl/certs/ca.crt",
-        "--push-gateway-url",
-        "http://pushgateway-prometheus-pushgateway.monitoring.svc.cluster.local:9091",
-        "--write",
-        ".aws/credentials=AWS_CREDENTIALS",
-        "--cloud",
-        "aws",
-        "--account-id",
-        "123456789012",
+        "collect",
+        "--write", "fix.worker.yaml=WORKER_CONFIG",
+        "--job-id", "uid",
+        "--tenant-id", "a",
+        "--redis-url", "redis://localhost:6379/0",
+        "--ca-cert", "/etc/ssl/certs/ca.crt",
+        "--push-gateway-url", "http://pushgateway-prometheus-pushgateway.monitoring.svc.cluster.local:9091",
+        "--write", ".aws/credentials=AWS_CREDENTIALS",
+        "--cloud", "aws",
+        "--account-id", "123456789012",
         "---",
         "--graphdb-bootstrap-do-not-secure",
-        "--graphdb-server",
-        "b",
-        "--graphdb-database",
-        "c",
-        "--graphdb-username",
-        "d",
-        "--graphdb-password",
-        "e",
-        "--override-path",
-        "/home/fixinventory/fix.worker.yaml",
-        "--ca-cert",
-        "/etc/ssl/certs/ca.crt",
+        "--graphdb-server", "b",
+        "--graphdb-database", "c",
+        "--graphdb-username", "d",
+        "--graphdb-password", "e",
+        "--override-path", "/home/fixinventory/fix.worker.yaml",
+        "--ca-cert", "/etc/ssl/certs/ca.crt",
         "---",
-        "--idle-timeout",
-        "120",
+        "--idle-timeout", "120",
     ]
+    # fmt: on
     assert job_def.env == {
         "AWS_CREDENTIALS": "[default]\n"
         "aws_access_key_id = some_access\n"
@@ -116,15 +121,40 @@ def test_read_job_definition(worker_queue: WorkerQueue, example_definition: Json
     }
 
 
+@pytest.mark.skipif(os.environ.get("REDIS_RUNNING", "false") != "true", reason="Redis not running")
+def test_read_post_job_definition(worker_queue: WorkerQueue, example_post_collect_definition: Json) -> None:
+    job_def = worker_queue.parse_post_collect_definition_json(example_post_collect_definition)
+    assert job_def.name.startswith("post-collect")
+    assert job_def.image == "someengineering/fix-collect-single:0.0.1"
+    # fmt:off
+    assert job_def.args == [
+        "post-collect",
+        "--job-id", "uid",
+        "--tenant-id", "a",
+        "--redis-url", "redis://localhost:6379/0",
+        "--ca-cert", "/etc/ssl/certs/ca.crt",
+        "--push-gateway-url", "http://pushgateway-prometheus-pushgateway.monitoring.svc.cluster.local:9091",
+        "--accounts-collected", '[{"cloud": "aws", "account_id": "aws_123456789012", "task_id": "t1-987654321"}, {"cloud": "gcp", "account_id": "gcp_123456789012", "task_id": "t2-987654321"}, {"cloud": "azure", "account_id": "ms_123456789012", "task_id": "t3-987654321"}]', # noqa
+        "---",
+        "--graphdb-bootstrap-do-not-secure",
+        "--graphdb-server", "b",
+        "--graphdb-database", "c",
+        "--graphdb-username", "d",
+        "--graphdb-password", "e",
+        "--ca-cert", "/etc/ssl/certs/ca.crt",
+    ]
+    # fmt:on
+
+
 @pytest.mark.asyncio
 @pytest.mark.skipif(os.environ.get("REDIS_RUNNING", "false") != "true", reason="Redis not running")
 async def test_enqueue_jobs(
-    arq_redis: ArqRedis, worker_queue: WorkerQueue, coordinator: LazyJobCoordinator, example_definition: Json
+    arq_redis: ArqRedis, worker_queue: WorkerQueue, coordinator: LazyJobCoordinator, example_collect_definition: Json
 ) -> None:
     async with worker_queue:
-        await arq_redis.enqueue_job("collect", example_definition)
-        await arq_redis.enqueue_job("collect", example_definition)
-        await arq_redis.enqueue_job("collect", example_definition)
+        await arq_redis.enqueue_job("collect", example_collect_definition)
+        await arq_redis.enqueue_job("collect", example_collect_definition)
+        await arq_redis.enqueue_job("collect", example_collect_definition)
         ping = await arq_redis.enqueue_job("ping")
         assert ping is not None
 

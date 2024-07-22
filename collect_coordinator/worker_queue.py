@@ -23,7 +23,6 @@ from arq.connections import RedisSettings
 from arq.constants import default_queue_name
 from arq.worker import func
 from bitmath import GiB
-from fixcloudutils.asyncio.timed import timed
 from fixcloudutils.redis.worker_queue import WorkerInstance
 from fixcloudutils.service import Service
 from fixcloudutils.types import Json
@@ -56,11 +55,21 @@ class WorkerQueue(Service):
             functions=[
                 func(coroutine=self.ping, name="ping", timeout=3, max_tries=1),
                 func(coroutine=self.collect, name="collect", timeout=3600, max_tries=1),
+                func(coroutine=self.post_collect, name="post-collect", timeout=3600, max_tries=1),
             ],
             max_jobs=self.coordinator.max_parallel,
         )
 
-    @timed(module="collect_coordinator", name="collect")
+    async def start(self) -> Any:
+        await self.worker_instance.start()
+
+    async def stop(self) -> Any:
+        await self.worker_instance.stop()
+
+    async def ping(self, ctx: Dict[Any, Any], *args: Any, **kwargs: Any) -> str:
+        log.info(f"Got Ping request with following context: {ctx}, args: {args}, kwargs: {kwargs}")
+        return "pong"
+
     async def collect(self, ctx: Dict[Any, Any], *args: Any, **kwargs: Any) -> bool:
         log.debug(f"Collect function called with ctx: {ctx}, args: {args}, kwargs: {kwargs}")
         job_id: str = ctx["job_id"]
@@ -74,28 +83,30 @@ class WorkerQueue(Service):
                 message = f"Failed to parse collect definition json: {e}"
                 log.error(message, exc_info=True)
                 raise ValueError(message) from e
-            try:
-                log.info(f"Received collect job {jd.name}")
-                future = await self.coordinator.start_job(jd)
-                log.info(f"Collect job {jd.name} started. Wait for the job to finish.")
-                return await future
-            except Exception as e:
-                log.warning(f"Collect job {jd.name} failed: {e}", exc_info=True)
-                raise
+            return await self.process_job_definition("collect", jd)
         else:
             message = f"Invalid arguments for collect function. Got {args}. Expect one arg of type Json."
             log.error(message)
             raise ValueError(message)
 
-    async def ping(self, ctx: Dict[Any, Any], *args: Any, **kwargs: Any) -> str:
-        log.info(f"Got Ping request with following context: {ctx}, args: {args}, kwargs: {kwargs}")
-        return "pong"
-
-    async def start(self) -> Any:
-        await self.worker_instance.start()
-
-    async def stop(self) -> Any:
-        await self.worker_instance.stop()
+    async def post_collect(self, ctx: Dict[Any, Any], *args: Any, **kwargs: Any) -> bool:
+        log.debug(f"PostCollect function called with ctx: {ctx}, args: {args}, kwargs: {kwargs}")
+        job_id: str = ctx["job_id"]
+        if len(args) == 1 and isinstance(args[0], dict):
+            data = args[0]
+            data["job_id"] = job_id
+            try:
+                jd = self.parse_post_collect_definition_json(data)
+                log.info(f"PostCollect function called: id={jd.id}, name={jd.name}")
+            except Exception as e:
+                message = f"Failed to parse post_collect definition json: {e}"
+                log.error(message, exc_info=True)
+                raise ValueError(message) from e
+            return await self.process_job_definition("post_collect", jd)
+        else:
+            message = f"Invalid arguments for collect function. Got {args}. Expect one arg of type Json."
+            log.error(message)
+            raise ValueError(message)
 
     def parse_collect_definition_json(self, js: Json) -> JobDefinition:
         job_id = js["job_id"]  # str
@@ -118,44 +129,34 @@ class WorkerQueue(Service):
         # the set of collectors to run
         collectors: Set[str] = set()
         # all coordinator arguments
+        # fmt: off
         coordinator_args = [
-            "--write",
-            "fix.worker.yaml=WORKER_CONFIG",
-            "--job-id",
-            job_id,
-            "--tenant-id",
-            tenant_id,
-            "--redis-url",
-            self.redis_event_url,
-            "--ca-cert",
-            "/etc/ssl/certs/ca.crt",
-            "--push-gateway-url",
-            "http://pushgateway-prometheus-pushgateway.monitoring.svc.cluster.local:9091",
+            "collect",
+            "--write", "fix.worker.yaml=WORKER_CONFIG",
+            "--job-id", job_id,
+            "--tenant-id", tenant_id,
+            "--redis-url", self.redis_event_url,
+            "--ca-cert", "/etc/ssl/certs/ca.crt",
+            "--push-gateway-url", "http://pushgateway-prometheus-pushgateway.monitoring.svc.cluster.local:9091",
         ]
         if retry_failed:
             coordinator_args.extend(["--retry-failed-for", str(retry_failed)])
         # all fixcore arguments
         core_args = [
             "--graphdb-bootstrap-do-not-secure",
-            "--graphdb-server",
-            graphdb_server,
-            "--graphdb-database",
-            graphdb_database,
-            "--graphdb-username",
-            graphdb_username,
-            "--graphdb-password",
-            graphdb_password,
-            "--override-path",
-            f"{ImageHome}/fix.worker.yaml",
-            "--ca-cert",
-            "/etc/ssl/certs/ca.crt",
+            "--graphdb-server", graphdb_server,
+            "--graphdb-database", graphdb_database,
+            "--graphdb-username", graphdb_username,
+            "--graphdb-password", graphdb_password,
+            "--override-path", f"{ImageHome}/fix.worker.yaml",
+            "--ca-cert", "/etc/ssl/certs/ca.crt",
         ]
         # all fixworker arguments
         worker_args: List[str] = [
             # A collect message should arrive within 2 minutes. If not, fail the process.
-            "--idle-timeout",
-            "120",
+            "--idle-timeout", "120",
         ]
+        # fmt: on
         # make the root password available via env
         if graph_db_root_password := self.credentials.get("graph_db_root_password"):
             env["FIXCORE_GRAPHDB_ROOT_PASSWORD"] = graph_db_root_password
@@ -254,6 +255,7 @@ class WorkerQueue(Service):
         worker_config["fixworker"] = {"collector": list(collectors)}
         env["WORKER_CONFIG"] = json.dumps(worker_config)
         return JobDefinition(
+            app="collect-job",
             id=job_id,
             name="collect-" + str(uuid.uuid1()),
             image="someengineering/fix-collect-single:" + self.versions.get("fix_collect_single", "edge"),
@@ -262,3 +264,52 @@ class WorkerQueue(Service):
             limits=limits,
             env=env,
         )
+
+    def parse_post_collect_definition_json(self, js: Json) -> JobDefinition:
+        job_id = js["job_id"]  # str
+        tenant_id = js["tenant_id"]  # str
+        env = js.get("env") or {}  # Optional[Dict[str, str]]
+        # fmt: off
+        post_collect_args = [
+            "--job-id", job_id,
+            "--tenant-id", tenant_id,
+            "--redis-url", self.redis_event_url,
+            "--ca-cert", "/etc/ssl/certs/ca.crt",
+            "--push-gateway-url", "http://pushgateway-prometheus-pushgateway.monitoring.svc.cluster.local:9091",
+            "--accounts-collected", json.dumps(js.get("accounts_collected", []))
+        ]
+
+        # all fixcore arguments
+        core_args = [
+            "--graphdb-bootstrap-do-not-secure",
+            "--graphdb-server", js["graphdb_server"],
+            "--graphdb-database", js["graphdb_database"],
+            "--graphdb-username", js["graphdb_username"],
+            "--graphdb-password", js["graphdb_password"],
+            "--ca-cert", "/etc/ssl/certs/ca.crt",
+        ]
+        # fmt: on
+
+        # each job run is for one tenant and all collected accounts
+        return JobDefinition(
+            app="post-collect-job",
+            id=job_id,
+            name="post-collect-" + str(uuid.uuid1()),
+            image="someengineering/fix-collect-single:" + self.versions.get("fix_collect_single", "edge"),
+            args=["post-collect", *post_collect_args, "---", *core_args],
+            requires=ComputeResources(cores=1, memory=GiB(4)),
+            limits=ComputeResources(cores=4, memory=GiB(16)),
+            env=env,
+        )
+
+    async def process_job_definition(self, kind: str, jd: JobDefinition) -> bool:
+        try:
+            log.info(f"Received {kind} job {jd.name}")
+            future = await self.coordinator.start_job(jd)
+            log.info(f"{kind} job {jd.name} started. Wait for the job to finish.")
+            result = await future
+            log.info(f"{kind} job {jd.name} finished. Success={result}")
+            return result
+        except Exception as e:
+            log.warning(f"{kind} job {jd.name} failed with exception: {e}", exc_info=True)
+            raise
