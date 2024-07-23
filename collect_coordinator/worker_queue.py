@@ -184,6 +184,7 @@ class WorkerQueue(Service):
                 "accounts": {
                     "default": {
                         "subscriptions": [az_subscription_id],
+                        "collect_microsoft_graph": account.get("collect_microsoft_graph", False),
                         "client_secret": {
                             "tenant_id": az_tenant_id,
                             "client_id": az_client_id,
