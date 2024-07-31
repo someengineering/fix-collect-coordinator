@@ -291,6 +291,10 @@ class WorkerQueue(Service):
         ]
         # fmt: on
 
+        # Make passwords available via env
+        if redis_password := self.credentials.get("redis_password"):
+            env["REDIS_PASSWORD"] = redis_password
+
         # each job run is for one tenant and all collected accounts
         return JobDefinition(
             app="post-collect-job",
