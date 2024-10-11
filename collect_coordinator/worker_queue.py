@@ -243,6 +243,8 @@ class WorkerQueue(Service):
                 "profiles": [aws_profile],
                 "prefer_profile_as_account_name": aws_account_name is not None,
             }
+            if arn := account.get("scrape_org_role_arn"):
+                worker_config["aws"]["scrape_org_role_arn"] = arn
 
         if account["kind"] == "aws_account_information":
             handle_aws_account()
